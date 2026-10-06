@@ -73,10 +73,10 @@ public class TeamUpdate8898 extends OpMode {
         rightBack.setDirection(DcMotorSimple.Direction.FORWARD);
 
         intake.setDirection(DcMotorSimple.Direction.REVERSE);
-        outake.setDirection(DcMotorEx.Direction.REVERSE);
+        outake.setDirection(DcMotorEx.Direction.FORWARD);
         outake.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
 
-        outake2.setDirection(DcMotorEx.Direction.FORWARD);
+        outake2.setDirection(DcMotorEx.Direction.REVERSE);
         outake2.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
 
         leftFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
