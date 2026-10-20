@@ -197,7 +197,7 @@ public class Drive extends OpMode {
             if(Shooter.getVelocity()*60.0/28.0 < shooterSetRPM* 0.95) {
                 //wait for Shooter to get up to 95% speed
                 intake_power = 0.0;
-                feeder_power = 0.5;
+                feeder_power = 0.0;
             }
             if(Shooter.getVelocity()*60.0/28.0 >= shooterSetRPM*0.95) {
                 //after Shooter reaches at least 95% of full speed, then we can feed balls
