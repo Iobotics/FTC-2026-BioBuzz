@@ -3,6 +3,8 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 /*
@@ -31,7 +33,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
  * Remove or comment out the @Disabled line to add this OpMode to the Driver Station OpMode list
  */
 
-@Autonomous(name="Robot: Auto Drive By Encoder", group="Robot")
+@Autonomous(name="USE THIS ONE FOR NOW", group="Robot")
 public class Badbadauto extends LinearOpMode {
 
             /* Declare OpMode members. */
@@ -39,8 +41,15 @@ public class Badbadauto extends LinearOpMode {
     private DcMotor Rightfront = null;
     private DcMotor Leftback = null;
     private DcMotor Rightback = null;
+    private DcMotor Intake = null;
+    private DcMotor Feeder = null;
+    private Servo intakebar = null;
+    private DcMotorEx Shooter = null;
+    double shooterSetRPM = 0.0;
+    double intake_power = 0.0;
+    double feeder_power = 0.0;
 
-    private ElapsedTime     runtime = new ElapsedTime();
+    private ElapsedTime  runtime = new ElapsedTime();
 
     // Calculate the COUNTS_PER_INCH for your specific drive train.
     // Go to your motor vendor website to determine your motor's COUNTS_PER_MOTOR_REV
@@ -60,40 +69,62 @@ public class Badbadauto extends LinearOpMode {
     public void runOpMode() {
 
         // Initialize the drive system variables.
-        Leftfront  = hardwareMap.get(DcMotor.class, "Leftfront");
+        Leftfront = hardwareMap.get(DcMotor.class, "Leftfront");
         Rightfront = hardwareMap.get(DcMotor.class, "Rightfront");
-        Leftback  = hardwareMap.get(DcMotor.class, "Leftback");
+        Leftback = hardwareMap.get(DcMotor.class, "Leftback");
         Rightback = hardwareMap.get(DcMotor.class, "Rightback");
+        Intake = hardwareMap.get(DcMotor.class, "intake");
+        Feeder = hardwareMap.get(DcMotor.class, "feeder");
+        intakebar = hardwareMap.get(Servo.class, "intakebar");
+        Shooter = hardwareMap.get(DcMotorEx.class, "Shooter");
 
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
-        // When run, this OpMode should start both motors driving forward. So adjust these two lines based on your first test drive.
+        // Pushing the left stick forward MUST make robot go forward. So adjust these two lines based on your first test drive.
         // Note: The settings here assume direct drive on left and right wheels.  Gear Reduction or 90 Deg drives may require direction flips
-        Leftfront.setDirection(DcMotor.Direction.FORWARD);
+
+
+        //R,R,R,F
+        Leftfront.setDirection(DcMotor.Direction.REVERSE);
         Rightfront.setDirection(DcMotor.Direction.REVERSE);
         Leftback.setDirection(DcMotor.Direction.FORWARD);
         Rightback.setDirection(DcMotor.Direction.REVERSE);
+        Intake.setDirection(DcMotor.Direction.REVERSE);
+        Feeder.setDirection(DcMotor.Direction.REVERSE);
+        Shooter.setDirection(DcMotorEx.Direction.REVERSE);
 
         Leftfront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         Rightfront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         Leftback.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         Rightback.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        Intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        Feeder.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        //Shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         Leftfront.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         Rightfront.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         Leftback.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
         Rightback.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        Intake.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        Feeder.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+        Shooter.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
 
         Leftback.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         Rightfront.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         Leftfront.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         Rightback.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        Intake.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        Feeder.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        Shooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
 
         // Send telemetry message to indicate successful Encoder reset
         telemetry.addData("Starting at",  "%7d :%7d",
                 Leftback.getCurrentPosition(),
                 Rightback.getCurrentPosition(),
                 Leftfront.getCurrentPosition(),
-                Rightfront.getCurrentPosition());
+                Rightfront.getCurrentPosition(),
+                Intake.getCurrentPosition(),
+                Feeder.getCurrentPosition(),
+                Shooter.getCurrentPosition());
         telemetry.update();
 
         // Wait for the game to start (driver presses PLAY)
@@ -141,6 +172,9 @@ public class Badbadauto extends LinearOpMode {
             Rightfront.setMode(DcMotor.RunMode.RUN_TO_POSITION);
             Leftback.setMode(DcMotor.RunMode.RUN_TO_POSITION);
             Rightback.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            Intake.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            Feeder.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+            Shooter.setMode(DcMotor.RunMode.RUN_TO_POSITION);
 
             // reset the timeout time and start motion.
             runtime.reset();
@@ -148,6 +182,9 @@ public class Badbadauto extends LinearOpMode {
             Rightfront.setPower(Math.abs(speed));
             Leftback.setPower(Math.abs(speed));
             Rightback.setPower(Math.abs(speed));
+            Intake.setPower(Math.abs(speed));
+            Feeder.setPower(Math.abs(speed));
+            Shooter.setPower(Math.abs(speed));
 
             // keep looping while we are still active, and there is time left, and both motors are running.
             // Note: We use (isBusy() && isBusy()) in the loop test, which means that when EITHER motor hits

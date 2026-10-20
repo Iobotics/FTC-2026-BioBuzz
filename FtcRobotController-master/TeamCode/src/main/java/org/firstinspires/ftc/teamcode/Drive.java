@@ -33,8 +33,10 @@ package org.firstinspires.ftc.teamcode;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 
 /*
  * This file contains an example of an iterative (Non-Linear) "OpMode".
@@ -68,8 +70,13 @@ public class Drive extends OpMode {
     // Track whether the 'A' button was pressed on the previous loop cycle
     boolean lastGamepad1A = false;
 
-    private DcMotor Shooter = null;
+    private DcMotorEx Shooter = null;
 
+    double shooterSetRPM = 0.0;
+
+    double intake_power = 0.0;
+
+    double feeder_power = 0.0;
 
     /*
      * Code to run ONCE when the driver hits INIT
@@ -88,7 +95,7 @@ public class Drive extends OpMode {
         Intake = hardwareMap.get(DcMotor.class, "intake");
         Feeder = hardwareMap.get(DcMotor.class, "feeder");
         intakebar = hardwareMap.get(Servo.class, "intakebar");
-        //Shooter = hardwareMap.get(DcMotor.class, "Shooter");
+        Shooter = hardwareMap.get(DcMotorEx.class, "Shooter");
 
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
         // Pushing the left stick forward MUST make robot go forward. So adjust these two lines based on your first test drive.
@@ -100,9 +107,9 @@ public class Drive extends OpMode {
         Rightfront.setDirection(DcMotor.Direction.REVERSE);
         Leftback.setDirection(DcMotor.Direction.FORWARD);
         Rightback.setDirection(DcMotor.Direction.REVERSE);
-        Intake.setDirection(DcMotor.Direction.FORWARD);
-        Feeder.setDirection(DcMotor.Direction.FORWARD);
-       //Shooter.setDirection(DcMotor.Direction.FORWARD);
+        Intake.setDirection(DcMotor.Direction.REVERSE);
+        Feeder.setDirection(DcMotor.Direction.REVERSE);
+        Shooter.setDirection(DcMotorEx.Direction.REVERSE);
 
         Leftfront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         Rightfront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
@@ -111,6 +118,8 @@ public class Drive extends OpMode {
         Intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         Feeder.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         //Shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        Shooter.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
 
         // Tell the driver that initialization is complete.
         telemetry.addData("Status", "Initialized");
@@ -140,15 +149,9 @@ public class Drive extends OpMode {
         //
         if (gamepad1.x) {
             intakebar.setPosition(0.25);
-            intakebar.close();
-            //PwmControl pwmCtrl = (PwmControl) intakebar;
-            //pwmCtrl.setPwmDisable();
         }
         if (gamepad1.b) {
             intakebar.setPosition(0.75);
-            intakebar.close();
-            //PwmControl pwmCtrl = (PwmControl) intakebar;
-            //pwmCtrl.setPwmDisable();
         }
 
         // Choose to drive using either Tank Mode, or POV Mode
@@ -166,8 +169,52 @@ public class Drive extends OpMode {
         double drive = gamepad1.left_stick_x;
         double strafe = gamepad1.left_stick_y;
         double twist = gamepad1.right_stick_x;
-        double intake_power = -gamepad1.right_trigger;
-        double feeder_power = gamepad1.right_bumper ? 1.0 : 0.0; // Converted boolean to double power
+
+        //Code to run the intake only
+        if(gamepad1.right_trigger_pressed && !gamepad1.left_trigger_pressed) {
+            intake_power = 1.0;
+            shooterSetRPM = 0.0;
+            feeder_power = 0.0;
+        }
+
+        //Code to push out extra balls
+        if(gamepad1.right_bumper && !gamepad1.left_trigger_pressed) {
+            intake_power = -0.40;
+            shooterSetRPM = 0.0;
+            feeder_power = 0.0;
+        }
+
+        //Code to run the feeder only
+        if(gamepad1.left_bumper && !gamepad1.left_trigger_pressed) {
+            intake_power = 0.0;
+            shooterSetRPM = 0.0;
+            feeder_power = 0.5;
+        }
+
+        //Code to run the shooter only
+        if(gamepad1.left_trigger_pressed && !gamepad1.right_trigger_pressed) {
+            shooterSetRPM = 3000.0;
+            if(Shooter.getVelocity()*60.0/28.0 < shooterSetRPM* 0.95) {
+                //wait for Shooter to get up to 95% speed
+                intake_power = 0.0;
+                feeder_power = 0.5;
+            }
+            if(Shooter.getVelocity()*60.0/28.0 >= shooterSetRPM*0.95) {
+                //after Shooter reaches at least 95% of full speed, then we can feed balls
+                intake_power = 1.0;
+                feeder_power = 1.0;
+            }
+        }
+
+        //Code when neither trigger buttons are pressed, turns everything off except driving
+        if(!gamepad1.right_trigger_pressed && !gamepad1.left_trigger_pressed && !gamepad1.right_bumper && !gamepad1.left_bumper) {
+            //when nothing is pressed, turn intake, feeder, shooter off
+            shooterSetRPM = 0.0;
+            intake_power = 0.0;
+            feeder_power = 0.0;
+        }
+
+
 
         if (isReversed) {
             drive = -drive;
@@ -179,9 +226,7 @@ public class Drive extends OpMode {
                 (drive - strafe - twist),
                 (drive - strafe + twist),
                 (drive + strafe - twist),
-                intake_power,
-                feeder_power,
-                //Shooter_power
+
         };
 
         // Send calculated power to wheels
@@ -199,12 +244,17 @@ public class Drive extends OpMode {
             Rightback.setPower(speeds[1]);
             Leftfront.setPower(speeds[2]);
             Leftback.setPower(speeds[3]);
-            Intake.setPower(speeds[4]);
-            Feeder.setPower(speeds[5]);
-            //Shooter.setPower(speeds[6]);
+
+            Intake.setPower(intake_power);
+            Feeder.setPower(feeder_power);
+            Shooter.setVelocity(shooterSetRPM*28.0/60.0);
 
         telemetry.addData("Status", "Run Time: " + runtime.toString());
         telemetry.addData("Drive Orientation", isReversed ? "REVERSED (Back is Front)" : "NORMAL");
+        telemetry.addData("Shooter Current RPM", "%4.2f", Shooter.getVelocity()*60.0/28.0);
+        telemetry.addData("Shooter Set RPM", "%4.2f", shooterSetRPM);
+        telemetry.addData("Intake Power","%4.2f",intake_power);
+        telemetry.addData("Feeder Power","%4.2f",feeder_power);
         telemetry.update();
 
         }

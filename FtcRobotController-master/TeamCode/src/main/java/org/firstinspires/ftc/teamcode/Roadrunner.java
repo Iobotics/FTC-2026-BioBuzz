@@ -6,6 +6,7 @@ import com.acmerobotics.dashboard.telemetry.TelemetryPacket;
 import com.acmerobotics.roadrunner.Action;
 import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.SequentialAction;
+import com.acmerobotics.roadrunner.ParallelAction;
 import com.acmerobotics.roadrunner.TrajectoryActionBuilder;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.acmerobotics.roadrunner.ftc.Actions;
@@ -34,17 +35,18 @@ public class Roadrunner extends LinearOpMode {
 
         public class RunIntake implements Action {
             private boolean initialized = false;
-            private ElapsedTime timer = new ElapsedTime();
+            private ElapsedTime timer;
             private double runTimeSeconds;
 
             public RunIntake(double runTimeSeconds) {
                 this.runTimeSeconds = runTimeSeconds;
             }
+
             @Override
             public boolean run(@NonNull TelemetryPacket packet) {
                 if (!initialized) {
-                    intakeMotor.setPower(-0.8);
-                    timer.reset(); // CRITICAL FIX: Resets the timer right when the action triggers!
+                    intakeMotor.setPower(0.8);
+                    timer = new ElapsedTime();
                     initialized = true;
                 }
 
@@ -52,50 +54,140 @@ public class Roadrunner extends LinearOpMode {
                 packet.put("intake", pos);
 
                 if (timer.seconds() < runTimeSeconds) {
-                    return true;  // Keep running the action
+                    return true;
                 } else {
                     intakeMotor.setPower(0);
-                    return false; // Action is finished
+                    return false;
                 }
             }
         }
 
-        // Updated default helper method to run for 4 seconds (instead of 1)
-        // to give the robot time to reach (-61, 61)
-        public Action runIntake() {
-            return new RunIntake(4.0);
+        public Action runIntake(double seconds) {
+            return new RunIntake(seconds);
         }
     }
 
-/*
-    // Nested custom subsystem for Outtake
-    public static class Outtake {
-        private DcMotorEx outtakeMotor; // Fixed variable casing
+    // Nested custom subsystem for Feeder
+    public static class Feeder {
+        private DcMotorEx feederMotor;
 
-        public Outtake(HardwareMap hardwareMap) {
-            outtakeMotor = hardwareMap.get(DcMotorEx.class, "outtake"); // Fixed variable casing
-            outtakeMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-            outtakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        public Feeder(HardwareMap hardwareMap) {
+            feederMotor = hardwareMap.get(DcMotorEx.class, "feeder");
+            feederMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            feederMotor.setDirection(DcMotorSimple.Direction.FORWARD);
         }
 
-        public class RunOuttake implements Action {
+        public DcMotorEx getFeederMotor() {
+            return feederMotor;
+        }
+
+        public class RunFeeder implements Action {
             private boolean initialized = false;
+            private ElapsedTime timer;
+            private double runTimeSeconds;
+
+            public RunFeeder(double runTimeSeconds) {
+                this.runTimeSeconds = runTimeSeconds;
+            }
 
             @Override
             public boolean run(@NonNull TelemetryPacket packet) {
                 if (!initialized) {
-                    outtakeMotor.setPower(-0.8);
+                    feederMotor.setPower(0.8);
+                    timer = new ElapsedTime();
+                    initialized = true;
+                }
+
+                double pos = feederMotor.getCurrentPosition();
+                packet.put("feeder", pos);
+
+                if (timer.seconds() < runTimeSeconds) {
+                    return true;
+                } else {
+                    feederMotor.setPower(0);
+                    return false;
+                }
+            }
+        }
+
+        public Action runFeeder(double seconds) {
+            return new RunFeeder(seconds);
+        }
+    }
+
+    // Nested custom subsystem for Outtake
+    public static class Outtake {
+        private DcMotorEx outtakeMotor;
+
+        public Outtake(HardwareMap hardwareMap) {
+            outtakeMotor = hardwareMap.get(DcMotorEx.class, "Shooter");
+            outtakeMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+            outtakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+            outtakeMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
+            outtakeMotor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        }
+
+        public class RunOuttake implements Action {
+            private boolean initialized = false;
+            private ElapsedTime timer;
+
+            @Override
+            public boolean run(@NonNull TelemetryPacket packet) {
+                if (!initialized) {
+                    outtakeMotor.setPower(0.8);
+                    timer = new ElapsedTime();
                     initialized = true;
                 }
 
                 double pos = outtakeMotor.getCurrentPosition();
-                packet.put("outtake", pos); // Fixed telemetry key string mapping
+                packet.put("Shooter", pos);
 
-                if (pos > 100.0) {
-                    outtakeMotor.setPower(0);
-                    return false; // Action is finished
+                if (timer.seconds() < 1.5) {
+                    return true;
                 } else {
-                    return true; // Keep running the action
+                    outtakeMotor.setPower(0);
+                    return false;
+                }
+            }
+        }
+
+        public class ShootThenFeed implements Action {
+            private boolean initialized = false;
+            private ElapsedTime timer;
+            private DcMotorEx feederMotor;
+            private double spinUpSeconds;
+            private double feedSeconds;
+
+            public ShootThenFeed(DcMotorEx feederMotor, double spinUpSeconds, double feedSeconds) {
+                this.feederMotor = feederMotor;
+                this.spinUpSeconds = spinUpSeconds;
+                this.feedSeconds = feedSeconds;
+            }
+
+            @Override
+            public boolean run(@NonNull TelemetryPacket packet) {
+                if (!initialized) {
+                    outtakeMotor.setPower(0.8);
+                    timer = new ElapsedTime();
+                    initialized = true;
+                }
+
+                double pos = outtakeMotor.getCurrentPosition();
+                packet.put("Shooter", pos);
+
+                if (timer.seconds() < spinUpSeconds) {
+                    // Phase 1: Spin up shooter
+                    return true;
+                } else if (timer.seconds() < (spinUpSeconds + feedSeconds)) {
+                    // Phase 2: Run feeder while shooter stays powered
+                    feederMotor.setPower(0.8);
+                    packet.put("feeder", feederMotor.getCurrentPosition());
+                    return true;
+                } else {
+                    // Phase 3: Stop both shooter and feeder
+                    outtakeMotor.setPower(0);
+                    feederMotor.setPower(0);
+                    return false;
                 }
             }
         }
@@ -103,34 +195,42 @@ public class Roadrunner extends LinearOpMode {
         public Action runOuttake() {
             return new RunOuttake();
         }
-    }
-*/
 
+        public Action shootThenFeed(DcMotorEx feederMotor, double spinUpSeconds, double feedSeconds) {
+            return new ShootThenFeed(feederMotor, spinUpSeconds, feedSeconds);
+        }
+    }
     @Override
     public void runOpMode() {
-        // Initialize RoadRunner Drive and Subsystems
         Pose2d initialPose = new Pose2d(-47, 61, Math.toRadians(-1.57));
         MecanumDrive drive = new MecanumDrive(hardwareMap, initialPose);
-        Intake intake = new Intake(hardwareMap);
-        //Outtake outtake = new Outtake(hardwareMap);
 
-        // Vision setup placeholder
+        Intake intake = new Intake(hardwareMap);
+        Feeder feeder = new Feeder(hardwareMap);
+        Outtake outtake = new Outtake(hardwareMap);
+
         int visionOutputPosition = 1;
 
-        // Build Trajectories and convert builder into an executable Action
-        Action trajectoryAction = drive.actionBuilder(initialPose)
-                .turn(Math.toRadians(90))
-                .strafeTo(new Vector2d(-47, 11.5))
+        // Build continuous path trajectory
+        Action continuousTrajectory = drive.actionBuilder(initialPose)
+                .strafeToLinearHeading(new Vector2d(-47, 11.5), Math.toRadians(0))
                 .waitSeconds(1)
-                //.stopAndAdd(outtake.runOuttake())
+                .stopAndAdd(outtake.shootThenFeed(feeder.getFeederMotor(), 0.8, 1.5))
                 .turn(Math.toRadians(90))
                 .strafeTo(new Vector2d(-61, 11.5))
-                // Starts the intake action immediately when moving toward (-61, 61)
-                .afterDisp(0, intake.runIntake())
+
+                .afterDisp(0, new ParallelAction(
+                        intake.runIntake(4.0),
+                        feeder.runFeeder(4.0)
+                ))
+
                 .strafeTo(new Vector2d(-61, 61))
+                .waitSeconds(1)
+                .strafeToLinearHeading(new Vector2d(38, 40), Math.toRadians(-90))
+                .strafeTo(new Vector2d(38, 61))
                 .build();
 
-        // Wait for the driver to press PLAY
+        // 1. Safe Initialization Loop (Runs when you hit INIT)
         while (!isStopRequested() && !opModeIsActive()) {
             int position = visionOutputPosition;
             telemetry.addData("Position during Init", position);
@@ -141,13 +241,15 @@ public class Roadrunner extends LinearOpMode {
         telemetry.addData("Starting Position", startPosition);
         telemetry.update();
 
+        // 2. Wait for the driver to press the START button
         waitForStart();
+
         if (isStopRequested()) return;
 
-        // Run your autonomous routines concurrently / sequentially here
+        // 3. SAFE EXECUTION: Runs the path blocking tracking sequence during the match
         Actions.runBlocking(
                 new SequentialAction(
-                        trajectoryAction
+                        continuousTrajectory
                 )
         );
     }

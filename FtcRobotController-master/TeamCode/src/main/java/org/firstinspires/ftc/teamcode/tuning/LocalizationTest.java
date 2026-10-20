@@ -7,13 +7,13 @@ import com.acmerobotics.roadrunner.Pose2d;
 import com.acmerobotics.roadrunner.PoseVelocity2d;
 import com.acmerobotics.roadrunner.Vector2d;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.eventloop.opmode.TeleOp; // Add this import
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 
 import org.firstinspires.ftc.teamcode.Drawing;
 import org.firstinspires.ftc.teamcode.MecanumDrive;
 import org.firstinspires.ftc.teamcode.TankDrive;
 
-@TeleOp(name = "LocalizationTest", group = "tuning") // Force exact name mapping
+@TeleOp(name = "LocalizationTest", group = "tuning")
 public class LocalizationTest extends LinearOpMode {
 
     @Override
@@ -26,15 +26,13 @@ public class LocalizationTest extends LinearOpMode {
             waitForStart();
 
             while (opModeIsActive()) {
-                drive.setDrivePowers(new PoseVelocity2d(
-                        new Vector2d(
-                                -gamepad1.left_stick_y,
-                                -gamepad1.left_stick_x
-                        ),
-                        -gamepad1.right_stick_x
-                ));
+                // FIXED: Capitalized the motor variables to perfectly match your MecanumDrive definitions!
+                drive.Leftfront.setPower(-gamepad1.left_stick_y - gamepad1.left_stick_x - gamepad1.right_stick_x);
+                drive.Leftback.setPower(-gamepad1.left_stick_y + gamepad1.left_stick_x - gamepad1.right_stick_x);
+                drive.Rightback.setPower(-gamepad1.left_stick_y - gamepad1.left_stick_x + gamepad1.right_stick_x);
+                drive.Rightfront.setPower(-gamepad1.left_stick_y + gamepad1.left_stick_x + gamepad1.right_stick_x);
 
-                drive.updatePoseEstimate();
+                drive.localizer.update();
 
                 Pose2d pose = drive.localizer.getPose();
                 telemetry.addData("x", pose.position.x);
@@ -53,15 +51,14 @@ public class LocalizationTest extends LinearOpMode {
             waitForStart();
 
             while (opModeIsActive()) {
-                drive.setDrivePowers(new PoseVelocity2d(
-                        new Vector2d(
-                                -gamepad1.left_stick_y,
-                                0.0
-                        ),
-                        -gamepad1.right_stick_x
-                ));
+                for (com.qualcomm.robotcore.hardware.DcMotorEx m : drive.leftMotors) {
+                    m.setPower(-gamepad1.left_stick_y - gamepad1.right_stick_x);
+                }
+                for (com.qualcomm.robotcore.hardware.DcMotorEx m : drive.rightMotors) {
+                    m.setPower(-gamepad1.left_stick_y + gamepad1.right_stick_x);
+                }
 
-                drive.updatePoseEstimate();
+                drive.localizer.update();
 
                 Pose2d pose = drive.localizer.getPose();
                 telemetry.addData("x", pose.position.x);
