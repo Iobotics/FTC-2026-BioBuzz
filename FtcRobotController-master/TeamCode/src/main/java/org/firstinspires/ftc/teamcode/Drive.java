@@ -28,15 +28,14 @@ package org.firstinspires.ftc.teamcode;
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-
-
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+
+import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 
 /*
  * This file contains an example of an iterative (Non-Linear) "OpMode".
@@ -63,12 +62,20 @@ public class Drive extends OpMode {
     private DcMotor Rightback = null;
     private DcMotor Intake = null;
     private DcMotor Feeder = null;
-    private Servo intakebar = null;
+    private ServoImplEx intakebar = null;
     // Track if the robot is currently inverted/reversed
     boolean isReversed = false;
 
     // Track whether the 'A' button was pressed on the previous loop cycle
     boolean lastGamepad1A = false;
+    boolean yPrev = false;
+    boolean bPrev = false;
+    boolean xPrev = false;
+    boolean aPrev = false;
+    boolean upPrev = false;
+    boolean leftPrev = false;
+    boolean downPrev = false;
+    boolean rightPrev = false;
 
     private DcMotorEx Shooter = null;
 
@@ -77,6 +84,13 @@ public class Drive extends OpMode {
     double intake_power = 0.0;
 
     double feeder_power = 0.0;
+    double targetShooterRPM = 3300.0;
+
+    double currentShooterRPM = 0;
+    final double P = 15.0;
+    final double I = 2.5;
+    final double D = 1.0;
+    final double F = 1.5;
 
     /*
      * Code to run ONCE when the driver hits INIT
@@ -94,7 +108,8 @@ public class Drive extends OpMode {
         Rightback = hardwareMap.get(DcMotor.class, "Rightback");
         Intake = hardwareMap.get(DcMotor.class, "intake");
         Feeder = hardwareMap.get(DcMotor.class, "feeder");
-        intakebar = hardwareMap.get(Servo.class, "intakebar");
+        intakebar = hardwareMap.get(ServoImplEx.class, "intakeBar");
+        intakebar.setPwmEnable();
         Shooter = hardwareMap.get(DcMotorEx.class, "Shooter");
 
         // To drive forward, most robots need the motor on one side to be reversed, because the axles point in opposite directions.
@@ -106,7 +121,7 @@ public class Drive extends OpMode {
         Leftfront.setDirection(DcMotor.Direction.REVERSE);
         Rightfront.setDirection(DcMotor.Direction.REVERSE);
         Leftback.setDirection(DcMotor.Direction.FORWARD);
-        Rightback.setDirection(DcMotor.Direction.REVERSE);
+        Rightback.setDirection(DcMotor.Direction.FORWARD);
         Intake.setDirection(DcMotor.Direction.REVERSE);
         Feeder.setDirection(DcMotor.Direction.REVERSE);
         Shooter.setDirection(DcMotorEx.Direction.REVERSE);
@@ -120,6 +135,8 @@ public class Drive extends OpMode {
         //Shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
         Shooter.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
+        Shooter.setVelocityPIDFCoefficients(P,I,D,F);
+
 
         // Tell the driver that initialization is complete.
         telemetry.addData("Status", "Initialized");
@@ -146,12 +163,12 @@ public class Drive extends OpMode {
     @Override
     public void loop() {
 
-        //
-        if (gamepad1.x) {
-            intakebar.setPosition(0.25);
-        }
-        if (gamepad1.b) {
+
+        if (gamepad1.dpad_down) {
             intakebar.setPosition(0.75);
+        }
+        if (gamepad1.dpad_up) {
+            intakebar.setPosition(0.25);
         }
 
         // Choose to drive using either Tank Mode, or POV Mode
@@ -176,9 +193,22 @@ public class Drive extends OpMode {
             shooterSetRPM = 0.0;
             feeder_power = 0.0;
         }
+        //intake for operator
+        if(gamepad2.right_bumper && !gamepad2.right_trigger_pressed) {
+            intake_power = 1.0;
+            shooterSetRPM = 0.0;
+            feeder_power = 0.0;
+        }
 
         //Code to push out extra balls
         if(gamepad1.right_bumper && !gamepad1.left_trigger_pressed) {
+            intake_power = -0.40;
+            shooterSetRPM = 0.0;
+            feeder_power = 0.0;
+        }
+
+        //Outtake for operator
+        if(gamepad2.right_trigger_pressed && !gamepad2.right_bumper) {
             intake_power = -0.40;
             shooterSetRPM = 0.0;
             feeder_power = 0.0;
@@ -190,16 +220,37 @@ public class Drive extends OpMode {
             shooterSetRPM = 0.0;
             feeder_power = 0.5;
         }
+        //feeder for operator
+        if(gamepad2.left_bumper && !gamepad2.left_trigger_pressed) {
+            intake_power = 0.0;
+            shooterSetRPM = 0.0;
+            feeder_power = 0.5;
+        }
 
         //Code to run the shooter only
         if(gamepad1.left_trigger_pressed && !gamepad1.right_trigger_pressed) {
-            shooterSetRPM = 3000.0;
-            if(Shooter.getVelocity()*60.0/28.0 < shooterSetRPM* 0.95) {
+            shooterSetRPM = 3300.0;
+            if(Shooter.getVelocity()*60.0/28.0 < targetShooterRPM * 0.95) {
                 //wait for Shooter to get up to 95% speed
                 intake_power = 0.0;
                 feeder_power = 0.0;
             }
-            if(Shooter.getVelocity()*60.0/28.0 >= shooterSetRPM*0.95) {
+            if(Shooter.getVelocity()*60.0/28.0 >= targetShooterRPM * 0.95) {
+                //after Shooter reaches at least 95% of full speed, then we can feed balls
+                intake_power = 1.0;
+                feeder_power = 1.0;
+            }
+        }
+
+        //shooter for operator
+        if(gamepad2.left_trigger_pressed && !gamepad2.left_bumper) {
+            shooterSetRPM = 3300.0;
+            if(Shooter.getVelocity()*60.0/28.0 < targetShooterRPM * 0.95) {
+                //wait for Shooter to get up to 95% speed
+                intake_power = 0.0;
+                feeder_power = 0.0;
+            }
+            if(Shooter.getVelocity()*60.0/28.0 >= targetShooterRPM * 0.95) {
                 //after Shooter reaches at least 95% of full speed, then we can feed balls
                 intake_power = 1.0;
                 feeder_power = 1.0;
@@ -207,14 +258,70 @@ public class Drive extends OpMode {
         }
 
         //Code when neither trigger buttons are pressed, turns everything off except driving
-        if(!gamepad1.right_trigger_pressed && !gamepad1.left_trigger_pressed && !gamepad1.right_bumper && !gamepad1.left_bumper) {
+        if(!gamepad1.right_trigger_pressed && !gamepad1.left_trigger_pressed && !gamepad1.right_bumper && !gamepad1.left_bumper && !gamepad2.right_trigger_pressed && !gamepad2.left_trigger_pressed && !gamepad2.right_bumper && !gamepad2.left_bumper) {
             //when nothing is pressed, turn intake, feeder, shooter off
             shooterSetRPM = 0.0;
             intake_power = 0.0;
             feeder_power = 0.0;
         }
 
+        if (gamepad2.b && !bPrev) {
+            targetShooterRPM = targetShooterRPM-50;
+        }
+        bPrev = gamepad2.b;
 
+        if (gamepad2.y && !yPrev) {
+            targetShooterRPM = targetShooterRPM+50;
+        }
+        yPrev = gamepad2.y;
+
+        if (gamepad2.a && !aPrev) {
+            targetShooterRPM = targetShooterRPM+100;
+        }
+        aPrev = gamepad2.y;
+        if (targetShooterRPM > 6000) {
+            targetShooterRPM = 6000;
+        }
+        if (targetShooterRPM < -6000) {
+            targetShooterRPM = -6000;
+        }
+
+        if (gamepad2.x && !xPrev) {
+         targetShooterRPM = -targetShooterRPM;
+        }
+        xPrev = gamepad2.x;
+
+//3 buttons on kenny's controller- 3400- up, 3300 left, 3200 down
+
+        if (gamepad2.dpad_up && !upPrev) {
+            targetShooterRPM = 3400;
+        }
+        upPrev = gamepad2.dpad_up;
+
+        if (gamepad2.dpad_left && !leftPrev) {
+            targetShooterRPM = 3300;
+        }
+        leftPrev = gamepad2.dpad_left;
+
+        if (gamepad2.dpad_down && !downPrev) {
+            targetShooterRPM = 3200;
+        }
+        downPrev = gamepad2.dpad_left;
+
+        if (gamepad2.dpad_right && !rightPrev){
+            targetShooterRPM = 2350;
+        }
+        rightPrev = gamepad2.dpad_right;
+
+
+
+
+        if (gamepad1.left_trigger > 0.1) {
+            shooterSetRPM = targetShooterRPM;
+        }
+        else {
+            shooterSetRPM = 0;
+        }
 
         if (isReversed) {
             drive = -drive;
@@ -248,13 +355,19 @@ public class Drive extends OpMode {
             Intake.setPower(intake_power);
             Feeder.setPower(feeder_power);
             Shooter.setVelocity(shooterSetRPM*28.0/60.0);
+            double ShooterAmps = Shooter.getCurrent(CurrentUnit.AMPS);
+            currentShooterRPM = Shooter.getVelocity()*60.0/28.0;
+
 
         telemetry.addData("Status", "Run Time: " + runtime.toString());
         telemetry.addData("Drive Orientation", isReversed ? "REVERSED (Back is Front)" : "NORMAL");
-        telemetry.addData("Shooter Current RPM", "%4.2f", Shooter.getVelocity()*60.0/28.0);
-        telemetry.addData("Shooter Set RPM", "%4.2f", shooterSetRPM);
+        telemetry.addData("Target RPM", targetShooterRPM);
+        telemetry.addData("Current RPM", currentShooterRPM);
+        telemetry.addData("Shooter Amps","%4.2f", ShooterAmps);
         telemetry.addData("Intake Power","%4.2f",intake_power);
         telemetry.addData("Feeder Power","%4.2f",feeder_power);
+        telemetry.addData("IntakeBar Position","%4.2f", intakebar.getPosition());
+
         telemetry.update();
 
         }

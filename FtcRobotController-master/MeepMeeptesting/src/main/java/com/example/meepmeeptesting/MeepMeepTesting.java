@@ -24,22 +24,12 @@ public class MeepMeepTesting {
         RoadRunnerBotEntity myBot = new DefaultBotBuilder(meepMeep)
                 // Set bot constraints: maxVel, maxAccel, maxAngVel, maxAngAccel, track width
                 .setConstraints(60, 60, Math.toRadians(180), Math.toRadians(180), 15)
-                .followTrajectorySequence(drive -> drive.trajectorySequenceBuilder(new Pose2d(-47, 61, Math.toRadians(-90)))
-                        .lineToLinearHeading(new Pose2d(-47, 11.5, Math.toRadians(0)))
-                        .waitSeconds(1)
-                        .addDisplacementMarker(() -> {
-                            System.out.println("Outtake (Shooter + Feeder)");
-                        })
-                        .waitSeconds(2.3)
-                        .turn(Math.toRadians(90))
-                        .strafeTo(new Vector2d(-61, 11.5))
-                        .addDisplacementMarker(() -> {
-                            System.out.println("Intake Started");
-                        })
-                        .strafeTo(new Vector2d(-61, 61))
-                        .waitSeconds(1)
-                        .lineToLinearHeading(new Pose2d(38, 40, Math.toRadians(-90)))
-                        .strafeTo(new Vector2d(38, 61))
+                .followTrajectorySequence(drive -> drive.trajectorySequenceBuilder(new Pose2d(-61, 11.5, Math.toRadians(-180)))
+                        .forward(-10)
+                        .strafeRight(20)
+                        .turn(Math.toRadians(-90))
+                        .strafeRight(76)
+                        .forward(25)
                         .build());
 
         meepMeep.setBackground(MeepMeep.Background.GRID_BLUE)
