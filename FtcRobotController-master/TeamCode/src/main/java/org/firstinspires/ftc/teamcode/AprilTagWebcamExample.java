@@ -25,3 +25,6 @@ AprilTagWebcam aprilTagWebcam = new AprilTagWebcam();
 }
 
 //15:40 https://www.youtube.com/watch?v=OZt33z-lyYo
+
+
+//self align, set rpm to whatever

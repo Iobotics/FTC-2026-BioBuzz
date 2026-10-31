@@ -270,7 +270,7 @@ public class Encoder extends LinearOpMode {
         }
 
         // Phase 2: Feed ball into active shooter (Run Feeder AND Intake)
-        Feeder.setPower(0.8);
+        Feeder.setPower(0.2);
         Intake.setPower(0.8);
         runtime.reset();
         while (opModeIsActive() && runtime.seconds() < feedTimeS) {

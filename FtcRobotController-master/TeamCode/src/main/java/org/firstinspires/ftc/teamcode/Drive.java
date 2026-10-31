@@ -227,9 +227,9 @@ public class Drive extends OpMode {
             feeder_power = 0.5;
         }
 
-        //Code to run the shooter only
+        //Code to run the shooter only (Gamepad 1: Driver Forward Shooting)
         if(gamepad1.left_trigger_pressed && !gamepad1.right_trigger_pressed) {
-            shooterSetRPM = 3300.0;
+            shooterSetRPM = targetShooterRPM;
             if(Shooter.getVelocity()*60.0/28.0 < targetShooterRPM * 0.95) {
                 //wait for Shooter to get up to 95% speed
                 intake_power = 0.0;
@@ -238,13 +238,13 @@ public class Drive extends OpMode {
             if(Shooter.getVelocity()*60.0/28.0 >= targetShooterRPM * 0.95) {
                 //after Shooter reaches at least 95% of full speed, then we can feed balls
                 intake_power = 1.0;
-                feeder_power = 1.0;
+                feeder_power = 0.8;
             }
         }
 
         //shooter for operator
-        if(gamepad2.left_trigger_pressed && !gamepad2.left_bumper) {
-            shooterSetRPM = 3300.0;
+        /*if(gamepad2.left_trigger_pressed && !gamepad2.left_bumper) {
+targetShooterRPM = -targetShooterRPM;
             if(Shooter.getVelocity()*60.0/28.0 < targetShooterRPM * 0.95) {
                 //wait for Shooter to get up to 95% speed
                 intake_power = 0.0;
@@ -253,16 +253,18 @@ public class Drive extends OpMode {
             if(Shooter.getVelocity()*60.0/28.0 >= targetShooterRPM * 0.95) {
                 //after Shooter reaches at least 95% of full speed, then we can feed balls
                 intake_power = 1.0;
-                feeder_power = 1.0;
+                feeder_power = 0.8;
             }
         }
-
+*/
         //Code when neither trigger buttons are pressed, turns everything off except driving
         if(!gamepad1.right_trigger_pressed && !gamepad1.left_trigger_pressed && !gamepad1.right_bumper && !gamepad1.left_bumper && !gamepad2.right_trigger_pressed && !gamepad2.left_trigger_pressed && !gamepad2.right_bumper && !gamepad2.left_bumper) {
             //when nothing is pressed, turn intake, feeder, shooter off
             shooterSetRPM = 0.0;
             intake_power = 0.0;
             feeder_power = 0.0;
+            //if targetshooterrpm is - turn it +
+            targetShooterRPM = targetShooterRPM;
         }
 
         if (gamepad2.b && !bPrev) {
@@ -278,18 +280,13 @@ public class Drive extends OpMode {
         if (gamepad2.a && !aPrev) {
             targetShooterRPM = targetShooterRPM+100;
         }
-        aPrev = gamepad2.y;
+        aPrev = gamepad2.a;
         if (targetShooterRPM > 6000) {
             targetShooterRPM = 6000;
         }
-        if (targetShooterRPM < -6000) {
-            targetShooterRPM = -6000;
+        if (targetShooterRPM < 0) {
+            targetShooterRPM = 0;
         }
-
-        if (gamepad2.x && !xPrev) {
-         targetShooterRPM = -targetShooterRPM;
-        }
-        xPrev = gamepad2.x;
 
 //3 buttons on kenny's controller- 3400- up, 3300 left, 3200 down
 
@@ -306,7 +303,7 @@ public class Drive extends OpMode {
         if (gamepad2.dpad_down && !downPrev) {
             targetShooterRPM = 3200;
         }
-        downPrev = gamepad2.dpad_left;
+        downPrev = gamepad2.dpad_down;
 
         if (gamepad2.dpad_right && !rightPrev){
             targetShooterRPM = 2350;
@@ -314,10 +311,11 @@ public class Drive extends OpMode {
         rightPrev = gamepad2.dpad_right;
 
 
-
-
         if (gamepad1.left_trigger > 0.1) {
             shooterSetRPM = targetShooterRPM;
+        }
+        else if (gamepad2.left_trigger > 0.1) {
+            shooterSetRPM = -Math.abs(targetShooterRPM);
         }
         else {
             shooterSetRPM = 0;
