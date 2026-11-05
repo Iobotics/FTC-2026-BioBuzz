@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.hardware.Servo;
 
 @Autonomous(name="Carter Parking Hive Auto", group="Robot")
 public class ParkingHiveSideAuto extends LinearOpMode {
@@ -22,6 +23,8 @@ public class ParkingHiveSideAuto extends LinearOpMode {
     private DcMotor intake_motor = null;
 
     private DcMotor feeder_motor = null;
+
+    private Servo flower_servo = null;
     private ElapsedTime runtime = new ElapsedTime();
 
     // --- Constants (tune for your robot) ---
@@ -49,6 +52,7 @@ public class ParkingHiveSideAuto extends LinearOpMode {
         intake_motor       = hardwareMap.get(DcMotor.class, "intake");
         shooter_motor      = hardwareMap.get(DcMotorEx.class, "shooter");
         feeder_motor       = hardwareMap.get(DcMotor.class, "feeder");
+        flower_servo       = hardwareMap.get(Servo.class, "flower");
 
 
 

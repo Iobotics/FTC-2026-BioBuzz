@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.hardware.Servo;
 
 @Autonomous(name="Carter Shooter Auto", group="Robot")
 public class ShooterAuto extends LinearOpMode {
@@ -22,6 +23,8 @@ public class ShooterAuto extends LinearOpMode {
     private DcMotor intake_motor = null;
 
     private DcMotor feeder_motor = null;
+
+    private Servo flower_servo = null;
     private ElapsedTime runtime = new ElapsedTime();
 
     // --- Constants (tune for your robot) ---
@@ -49,6 +52,7 @@ public class ShooterAuto extends LinearOpMode {
         intake_motor       = hardwareMap.get(DcMotor.class, "intake");
         shooter_motor      = hardwareMap.get(DcMotorEx.class, "shooter");
         feeder_motor       = hardwareMap.get(DcMotor.class, "feeder");
+        flower_servo       = hardwareMap.get(Servo.class, "flower");
 
 
 
@@ -87,9 +91,7 @@ public class ShooterAuto extends LinearOpMode {
         // --- Step 1: Drive forward slightly
         encoderDrive(DRIVE_SPEED, 10, 10, 10, 10, 5.0);  //front of the robot is facing the field wall
 
-        feeder_motor.setPower(1.0);
-        sleep(300);
-        feeder_motor.setPower(-1.0);
+        feeder_motor.setPower (-1.0);
 
         // --- Step 3: Spin shooter motors and launch pollen ---
         setShooterRPM = 3200;
@@ -104,7 +106,7 @@ public class ShooterAuto extends LinearOpMode {
         shooter_motor.setVelocity(0.0);
         intake_motor.setPower(0.0);
         feeder_motor.setPower(0.0);
-//10.28
+
 
         // --- Step 4: Drive diagonal 72 inches ---
         encoderDrive(DRIVE_SPEED, 0, 72, 72, 0, 5.0);  //front of the robot is facing the field wall
@@ -119,10 +121,14 @@ public class ShooterAuto extends LinearOpMode {
 
 
 
+
+
         telemetry.addData("Path", "Complete");
+        telemetry.addData("yo did the auto cook", "nah");
         telemetry.update();
         sleep(1000);
     }
+
 
     // --- Helper Method for Encoder Drive ---
     public void encoderDrive(double speed,
