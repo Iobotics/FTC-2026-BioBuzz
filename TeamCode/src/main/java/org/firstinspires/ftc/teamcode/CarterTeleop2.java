@@ -25,7 +25,7 @@ public class CarterTeleop2 extends LinearOpMode {
     private Servo flower_servo = null;
 
     // declare shooter control variables
-    double targetShooterRPM = 2000;
+    double targetShooterRPM = 2100;
     double currentShooterRPM = 0;
     double setShooterRPM = 0.0;
 

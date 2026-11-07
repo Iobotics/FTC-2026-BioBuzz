@@ -89,19 +89,17 @@ public class ShooterAuto extends LinearOpMode {
         waitForStart();
 
         // --- Step 1: Drive forward slightly
-        encoderDrive(DRIVE_SPEED, 10, 10, 10, 10, 5.0);  //front of the robot is facing the field wall
-
-        feeder_motor.setPower (-1.0);
+        encoderDrive(DRIVE_SPEED, 10, 10, 10, 10, 2.0);  //front of the robot is facing the field wall
 
         // --- Step 3: Spin shooter motors and launch pollen ---
-        setShooterRPM = 3200;
+        setShooterRPM = 2400;
         shooter_motor.setVelocity(setShooterRPM*28.0/60.0);
         //Converts RPM into Ticks per Second at the Encoder
         while (shooter_motor.getVelocity() < (setShooterRPM*28.0/60.0)) {
             //wait for motor to get to speed
         }
         intake_motor.setPower(1.0);
-        feeder_motor.setPower(1.0);
+        feeder_motor.setPower(-0.6);
         sleep(1500);  //delay 1,500 milliseconds
         shooter_motor.setVelocity(0.0);
         intake_motor.setPower(0.0);
