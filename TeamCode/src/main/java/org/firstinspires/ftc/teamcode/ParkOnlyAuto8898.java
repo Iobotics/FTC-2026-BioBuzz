@@ -115,6 +115,11 @@ public class ParkOnlyAuto8898 extends LinearOpMode {
         // --- Step 1: Drive forward slightly
         encoderDrive(DRIVE_SPEED, 12, 12, 12, 12, 5.0);  //front of the robot is facing the field wall
 
+        //drop intake
+        intakeBar.setPwmEnable();
+        intakeBar.setPosition(0.45);
+        sleep(500);
+        intakeBar.setPwmDisable();
 
         // --- Step 2: Strafe Right 62 inches ---
         encoderDrive(DRIVE_SPEED, 62, -62, -62, 62, 5.0);  //front of the robot is facing the field wall

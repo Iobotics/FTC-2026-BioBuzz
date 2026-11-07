@@ -119,7 +119,7 @@ public class SecondShooterAuto8898 extends LinearOpMode {
         encoderDrive(DRIVE_SPEED, 12, 12, 12, 12, 5.0);  //front of the robot is facing the field wall
 
 
-        // --- Step 3: Drop the Intakem
+        // --- Step 3: Drop the Intake
 
         intakeBar.setPwmEnable();
         intakeBar.setPosition(0.45);
