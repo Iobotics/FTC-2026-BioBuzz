@@ -128,8 +128,8 @@ public class SecondShooterAuto8898 extends LinearOpMode {
 
 
         // --- Step 4: Spin shooter motors and launch pollen ---
-        outakeSetRPM = 2175.0;
-        outake2SetRPM = 2175.0;
+        outakeSetRPM = 2100.0;
+        outake2SetRPM = 2100.0;
         outake.setVelocity(outakeSetRPM*28.0/60.0);
         outake2.setVelocity(outake2SetRPM*28.0/60.0);
         while (outake.getVelocity() < (outakeSetRPM*28.0/60.0)) {

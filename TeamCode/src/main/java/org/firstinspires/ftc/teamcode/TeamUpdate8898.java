@@ -19,7 +19,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
  *
  * @author Brandon Gong
  */
-@TeleOp(name="TeamUpdate8898", group="Linear Opmode")
+@TeleOp(name="TeamUpdate8898flower", group="Linear Opmode")
 public class TeamUpdate8898 extends OpMode {
 
     /*
@@ -38,9 +38,10 @@ public class TeamUpdate8898 extends OpMode {
     private DcMotorEx outake2 = null;
     private DcMotorEx feeder = null;
     private ServoImplEx intakeBar;
+    private ServoImplEx flower;
 
 
-    private ServoImplEx swiper;
+
 
     private double intake_power;
 
@@ -79,7 +80,7 @@ public class TeamUpdate8898 extends OpMode {
         outake2  = hardwareMap.get(DcMotorEx.class, "outake2");
 
         intakeBar   = hardwareMap.get(ServoImplEx.class, "intakeBar");
-        swiper = hardwareMap.get(ServoImplEx.class, "swiper");
+        flower = hardwareMap.get(ServoImplEx.class,"flower");
 
 
 
@@ -89,7 +90,6 @@ public class TeamUpdate8898 extends OpMode {
         rightBack.setDirection(DcMotorSimple.Direction.FORWARD);
 
         intake.setDirection(DcMotorSimple.Direction.REVERSE);
-
         feeder.setDirection(DcMotorSimple.Direction.FORWARD);
 
         outake.setDirection(DcMotorEx.Direction.REVERSE);
@@ -121,20 +121,20 @@ public class TeamUpdate8898 extends OpMode {
         outake2SetRPM = 0.0;
         feeder_power = 0.0;
 
-        //Code for running the swiper
+        //Code for running the flower
         if (gamepad1.y) {
-            swiper.setPosition(0.15);
+            flower.setPosition(0.15);
             for (double i = 0.15; i < 0.65 ; i+= 0.001) {
-                swiper.setPosition(i);
+                flower.setPosition(i);
             }
             for (double i = 0.65; i> 0.15 ; i-= 0.001) {
-                swiper.setPosition(i);
+                flower.setPosition(i);
             }
         }
 
-        //Code for resetting swiper
+        //Code for resetting flower
         if (!gamepad1.y) {
-            swiper.setPosition(0.0);
+            flower.setPosition(0.0);
         }
 
         /*if  (gamepad1.x) {
@@ -190,8 +190,8 @@ public class TeamUpdate8898 extends OpMode {
 
         //Code to run the Outake
         if(gamepad1.left_trigger > 0.0 && gamepad1.right_trigger < 0.01) {
-            outakeSetRPM = 2200.0;
-            outake2SetRPM = 2200.0;
+            outakeSetRPM = 2100.0;
+            outake2SetRPM = 2100.0;
             if (outake.getVelocity() < (outakeSetRPM*28.0/60.0)) {
                 //wait for shooter to spin up
             }
