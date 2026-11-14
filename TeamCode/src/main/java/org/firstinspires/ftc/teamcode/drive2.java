@@ -69,18 +69,12 @@ public class drive2 extends OpMode {
 
     final double MIN_TARGET_HEIGHT_IN = -999;
 
-    final double SHOOT_RANGE_IN = 70.0;
-    final double RANGE_TOL = 3.0;
     final double BEARING_TOL = 1.5;
     final double AIM_OFFSET_DEG = 0.0;
 
     final double TURN_GAIN = 0.02;
     final double MAX_TURN = 0.35;
     final double MIN_TURN = 0.08;
-    final double RANGE_GAIN = 0.015;
-    final double MAX_DRIVE = 0.40;
-    final double MIN_DRIVE = 0.10;
-    final double DRIVE_BEARING_GATE = 10;
     final double SEARCH_TURN = 0.20;
     final double LOST_HOLD_S = 0.30;
     final double ALIGNED_HOLD_S = 0.25;
@@ -90,7 +84,6 @@ public class drive2 extends OpMode {
 
     final double TURN_SIGN = -1.0;
 
-    final double AUTO_FWD_SIGN = -1.0;
 
     boolean blueAlliance = true;
     boolean autoAlignActive = false;
@@ -254,7 +247,7 @@ public class drive2 extends OpMode {
             alignStatus = "CANCELLED";
         }
 
-        double forward = 0, twist = 0;
+        double twist = 0;
 
         if (autoAlignActive) {
             if (now - autoStartTime > AUTO_TIMEOUT_S) {
@@ -265,11 +258,9 @@ public class drive2 extends OpMode {
                 lastTargetTime = now;
 
                 double bearingErr = target.bearing - AIM_OFFSET_DEG;
-                double rangeErr = target.range - SHOOT_RANGE_IN;
                 if (Math.abs(bearingErr) > 0.01) searchDir = Math.signum(bearingErr);
 
                 boolean headingOk = Math.abs(bearingErr) < BEARING_TOL;
-                boolean rangeOk = Math.abs(rangeErr) < RANGE_TOL;
                 alignStatus = "ALIGNING";
 
                 if (!headingOk) {
@@ -277,12 +268,7 @@ public class drive2 extends OpMode {
                     if (Math.abs(twist) < MIN_TURN) twist = Math.copySign(MIN_TURN, twist);
                 }
 
-                if (!rangeOk && Math.abs(bearingErr) < DRIVE_BEARING_GATE) {
-                    forward = Range.clip(rangeErr * RANGE_GAIN, -MAX_DRIVE, MAX_DRIVE);
-                    if (Math.abs(forward) < MIN_DRIVE) forward = Math.copySign(MIN_DRIVE, forward);
-                }
-
-                if (headingOk && rangeOk) {
+                if (headingOk) {
                     if (alignedSince < 0) alignedSince = now;
                     if (now - alignedSince >= ALIGNED_HOLD_S) {
 
@@ -291,7 +277,6 @@ public class drive2 extends OpMode {
                         autoAlignActive = false;
                         alignStatus = "ALIGNED";
                         gamepad1.rumble(400);
-                        forward = 0;
                         twist = 0;
                     }
                 } else {
@@ -309,7 +294,7 @@ public class drive2 extends OpMode {
 
         if (autoAlignActive) {
 
-            driveMecanum(0, AUTO_FWD_SIGN * forward, twist);
+            driveMecanum(0, 0, twist);
         } else {
 
             double drive = gamepad1.left_stick_x;
@@ -376,7 +361,7 @@ public class drive2 extends OpMode {
         if (target != null) {
             telemetry.addData("Target cell", target.cell + " (" + target.tagsSeen + " tags)");
             telemetry.addData("Bearing (deg)", "%5.1f", target.bearing);
-            telemetry.addData("Range (in)", "%5.1f  (goal %.0f)", target.range, SHOOT_RANGE_IN);
+            telemetry.addData("Range (in)", "%5.1f", target.range);
             telemetry.addData("Est. height (in)", "%5.1f", target.height);
         } else {
             telemetry.addData("Target", "none visible");
