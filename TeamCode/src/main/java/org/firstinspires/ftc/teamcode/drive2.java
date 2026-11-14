@@ -12,9 +12,12 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
 import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import android.util.Size;
@@ -25,53 +28,91 @@ import java.util.concurrent.TimeUnit;
 @TeleOp(name = "8740 Teleop", group = "Iterative OpMode")
 public class drive2 extends OpMode {
 
-    // ---------------- Hardware ----------------
     private final ElapsedTime runtime = new ElapsedTime();
     private DcMotor Leftfront, Rightfront, Leftback, Rightback;
     private DcMotor Intake, Feeder;
     private DcMotorEx Shooter;
     private ServoImplEx intakebar, rampleft, rampright;
 
-    // ---------------- Shooter ----------------
     final double TICKS_PER_REV = 28.0;
     final double P = 15.0, I = 2.5, D = 1.0, F = 1.5;
-    final double READY_FRACTION = 0.95;   // feed only once shooter is at 95% of target
+    final double READY_FRACTION = 0.95;
 
-    double targetShooterRPM = 2600;     // manual target (gamepad2 adjusts this)
+    double targetShooterRPM = 2600;
     double currentShooterRPM = 0;
 
-    // ---------------- Vision ----------------
+    final double[] DIST_IN = {  30,   50,   70,   90,  110 };
+    final double[] RPM_TBL = {2350, 2800, 3200, 3300, 3400 };
+
     private AprilTagProcessor aprilTag;
     private VisionPortal portal;
     boolean exposureSet = false;
 
-    final String CAMERA_NAME = "webcam";  // must match Robot Configuration exactly
-    final int BLUE_TAG = 20;
-    final int RED_TAG = 24;
+    final String CAMERA_NAME = "webcam";
+    final double TAG_SIZE_IN = 3.25;
+    final int RED_FIRST_ID = 30;
+    final int BLUE_FIRST_ID = 38;
+    final int CELLS_PER_ALLIANCE = 2;
+    final int TAGS_PER_CELL = 4;
 
-    // Auto-aim tuning
+    final int EXPOSURE_MS = 6;
+    final int GAIN = 250;
+
+    final double CAMERA_LEFT_OFFSET_IN = 6.0;
+
+    final double CAMERA_FWD_OFFSET_IN = 0.0;
+
+    final double CAMERA_YAW_LEFT_DEG = 0.0;
+
+    final double CAMERA_HEIGHT_IN = 10.0;
+    final double CAMERA_TILT_UP_DEG = 0.0;
+
+    final double MIN_TARGET_HEIGHT_IN = -999;
+
+    final double SHOOT_RANGE_IN = 70.0;
+    final double RANGE_TOL = 3.0;
+    final double BEARING_TOL = 1.5;
+    final double AIM_OFFSET_DEG = 0.0;
+
     final double TURN_GAIN = 0.02;
     final double MAX_TURN = 0.35;
     final double MIN_TURN = 0.08;
-    final double BEARING_TOL = 1.5;       // degrees
-    final double SEARCH_TURN = 0.20;      // slow spin when X held and no tag visible
-    // If the robot turns AWAY from the tag, change this to +1.0
+    final double RANGE_GAIN = 0.015;
+    final double MAX_DRIVE = 0.40;
+    final double MIN_DRIVE = 0.10;
+    final double DRIVE_BEARING_GATE = 10;
+    final double SEARCH_TURN = 0.20;
+    final double LOST_HOLD_S = 0.30;
+    final double ALIGNED_HOLD_S = 0.25;
+    final double AUTO_TIMEOUT_S = 6.0;
+    final double SPIN_HOLD_S = 3.0;
+    final double CANCEL_STICK = 0.25;
+
     final double TURN_SIGN = -1.0;
 
-    // Distance (inches) -> RPM table
-    final double[] DIST_IN = {  30,   50,   70,   90,  110 };
-    final double[] RPM_TBL = {2350, 2800, 3200, 3300, 3400 };
+    final double AUTO_FWD_SIGN = -1.0;
 
     boolean blueAlliance = true;
-    boolean aiming = false;
-    double tagBearing = 0;
-    double tagRange = 0;
+    boolean autoAlignActive = false;
+    String alignStatus = "IDLE";
+    double autoStartTime = 0;
+    double lastTargetTime = 0;
+    double alignedSince = -1;
+    double spinHoldUntil = 0;
+    double searchDir = -1;
+    int lockedCell = -1;
 
-    // ---------------- Button edge detection ----------------
+    private static class HiveTarget {
+        int cell;
+        double bearing, range, height;
+        int tagsSeen;
+    }
+
     boolean isReversed = false;
     boolean lastGamepad1A = false;
     boolean alliancePrev = false;
-    boolean yPrev, bPrev, xPrev, aPrev, upPrev, leftPrev, downPrev, rightPrev;
+    boolean alignBtnPrev = false;
+    boolean yPrev, bPrev, aPrev, upPrev, leftPrev, rightPrev;
 
     @Override
     public void init() {
@@ -115,27 +156,30 @@ public class drive2 extends OpMode {
     }
 
     private void initVision() {
+
+        AprilTagLibrary.Builder lib = new AprilTagLibrary.Builder();
+        for (int id = RED_FIRST_ID; id < BLUE_FIRST_ID + CELLS_PER_ALLIANCE * TAGS_PER_CELL; id++) {
+            lib.addTag(id, "HIVE " + id, TAG_SIZE_IN, DistanceUnit.INCH);
+        }
+
         aprilTag = new AprilTagProcessor.Builder()
+                .setTagLibrary(lib.build())
+                .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
                 .setDrawTagID(true)
                 .setDrawTagOutline(true)
                 .setDrawAxes(true)
-                .setDrawCubeProjection(true)
-                // If you have calibration for your webcam, add:
-                // .setLensIntrinsics(fx, fy, cx, cy)
                 .build();
 
-        // Lower decimation = longer detection range but slower FPS. Try 2 or 3.
         aprilTag.setDecimation(2);
 
         portal = new VisionPortal.Builder()
                 .setCamera(hardwareMap.get(WebcamName.class, CAMERA_NAME))
                 .setCameraResolution(new Size(640, 480))
-                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)  // less USB bandwidth
+                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
                 .addProcessor(aprilTag)
                 .build();
     }
 
-    /** Short exposure + high gain reduces motion blur. Only works once the camera is streaming. */
     private void setManualExposure(int exposureMs, int gainValue) {
         if (portal == null || exposureSet) return;
         if (portal.getCameraState() != VisionPortal.CameraState.STREAMING) return;
@@ -149,12 +193,9 @@ public class drive2 extends OpMode {
 
             GainControl gain = portal.getCameraControl(GainControl.class);
             gain.setGain(Range.clip(gainValue, gain.getMinGain(), gain.getMaxGain()));
-
-            exposureSet = true;
         } catch (Exception e) {
-            // Some webcams don't support manual control; fall back to auto
-            exposureSet = true;
         }
+        exposureSet = true;
     }
 
     @Override
@@ -164,11 +205,10 @@ public class drive2 extends OpMode {
         }
         alliancePrev = gamepad1.y;
 
-        setManualExposure(6, 250);
+        setManualExposure(EXPOSURE_MS, GAIN);
 
         telemetry.addData("Alliance (Y to toggle)", blueAlliance ? "BLUE" : "RED");
         telemetry.addData("Camera state", portal.getCameraState());
-        telemetry.addData("Manual exposure set", exposureSet);
         telemetry.addData("# detections", aprilTag.getDetections().size());
         telemetry.update();
     }
@@ -180,56 +220,112 @@ public class drive2 extends OpMode {
 
     @Override
     public void loop() {
-        setManualExposure(6, 250);  // no-op if already applied
+        double now = runtime.seconds();
+        setManualExposure(EXPOSURE_MS, GAIN);
 
         handleServos();
         handleToggles();
         handleShooterTargetAdjust();
 
-        // ---------- Vision ----------
         List<AprilTagDetection> allTags = aprilTag.getDetections();
-        AprilTagDetection tag = findTag(allTags, blueAlliance ? BLUE_TAG : RED_TAG);
-        if (tag != null) {
-            tagBearing = tag.ftcPose.bearing;
-            tagRange = tag.ftcPose.range;
+        HiveTarget target = findHiveTarget(allTags, autoAlignActive ? lockedCell : -1);
+
+        boolean alignBtn = gamepad1.x;
+        if (alignBtn && !alignBtnPrev) {
+            if (autoAlignActive) {
+                autoAlignActive = false;
+                alignStatus = "CANCELLED";
+            } else {
+                autoAlignActive = true;
+                alignStatus = "SEARCHING";
+                autoStartTime = now;
+                lastTargetTime = now;
+                alignedSince = -1;
+                lockedCell = -1;
+            }
+        }
+        alignBtnPrev = alignBtn;
+
+        boolean sticksMoved = Math.abs(gamepad1.left_stick_x) > CANCEL_STICK
+                || Math.abs(gamepad1.left_stick_y) > CANCEL_STICK
+                || Math.abs(gamepad1.right_stick_x) > CANCEL_STICK;
+        if (autoAlignActive && sticksMoved) {
+            autoAlignActive = false;
+            alignStatus = "CANCELLED";
         }
 
-        boolean xHeld = gamepad1.x;
-        aiming = xHeld && tag != null;
+        double forward = 0, twist = 0;
 
-        // ---------- Driving inputs ----------
-        // NOTE: kept as in your original (left_stick_x -> drive, left_stick_y -> strafe).
-        // Most robots use drive = -left_stick_y, strafe = left_stick_x; leave as-is if it drives correctly.
-        double drive = gamepad1.left_stick_x;
-        double strafe = gamepad1.left_stick_y;
-        double twist = gamepad1.right_stick_x;
+        if (autoAlignActive) {
+            if (now - autoStartTime > AUTO_TIMEOUT_S) {
+                autoAlignActive = false;
+                alignStatus = "TIMEOUT";
+            } else if (target != null) {
+                lockedCell = target.cell;
+                lastTargetTime = now;
 
-        if (aiming) {
-            if (Math.abs(tagBearing) < BEARING_TOL) {
-                twist = 0;
+                double bearingErr = target.bearing - AIM_OFFSET_DEG;
+                double rangeErr = target.range - SHOOT_RANGE_IN;
+                if (Math.abs(bearingErr) > 0.01) searchDir = Math.signum(bearingErr);
+
+                boolean headingOk = Math.abs(bearingErr) < BEARING_TOL;
+                boolean rangeOk = Math.abs(rangeErr) < RANGE_TOL;
+                alignStatus = "ALIGNING";
+
+                if (!headingOk) {
+                    twist = TURN_SIGN * Range.clip(bearingErr * TURN_GAIN, -MAX_TURN, MAX_TURN);
+                    if (Math.abs(twist) < MIN_TURN) twist = Math.copySign(MIN_TURN, twist);
+                }
+
+                if (!rangeOk && Math.abs(bearingErr) < DRIVE_BEARING_GATE) {
+                    forward = Range.clip(rangeErr * RANGE_GAIN, -MAX_DRIVE, MAX_DRIVE);
+                    if (Math.abs(forward) < MIN_DRIVE) forward = Math.copySign(MIN_DRIVE, forward);
+                }
+
+                if (headingOk && rangeOk) {
+                    if (alignedSince < 0) alignedSince = now;
+                    if (now - alignedSince >= ALIGNED_HOLD_S) {
+
+                        targetShooterRPM = Math.round(rpmForDistance(target.range) / 10.0) * 10.0;
+                        spinHoldUntil = now + SPIN_HOLD_S;
+                        autoAlignActive = false;
+                        alignStatus = "ALIGNED";
+                        gamepad1.rumble(400);
+                        forward = 0;
+                        twist = 0;
+                    }
+                } else {
+                    alignedSince = -1;
+                }
             } else {
-                twist = TURN_SIGN * Range.clip(tagBearing * TURN_GAIN, -MAX_TURN, MAX_TURN);
-                if (Math.abs(twist) < MIN_TURN) {
-                    twist = Math.copySign(MIN_TURN, twist);
+
+                alignedSince = -1;
+                alignStatus = "SEARCHING";
+                if (now - lastTargetTime > LOST_HOLD_S) {
+                    twist = TURN_SIGN * searchDir * SEARCH_TURN;
                 }
             }
-        } else if (xHeld) {
-            // X held but no tag in view: slowly spin to search for it
-            twist = -TURN_SIGN * SEARCH_TURN;
         }
 
-        if (isReversed) {
-            drive = -drive;
-            strafe = -strafe;
+        if (autoAlignActive) {
+
+            driveMecanum(0, AUTO_FWD_SIGN * forward, twist);
+        } else {
+
+            double drive = gamepad1.left_stick_x;
+            double strafe = gamepad1.left_stick_y;
+            double manualTwist = gamepad1.right_stick_x;
+            if (isReversed) {
+                drive = -drive;
+                strafe = -strafe;
+            }
+            driveMecanum(drive, strafe, manualTwist);
         }
 
-        driveMecanum(drive, strafe, twist);
-
-        // ---------- Shooter / intake / feeder ----------
         currentShooterRPM = Shooter.getVelocity() * 60.0 / TICKS_PER_REV;
 
-        // Auto-aim sets the RPM from distance without overwriting your manual target
-        double activeRPM = aiming ? rpmForDistance(tagRange) : targetShooterRPM;
+        double activeRPM = (autoAlignActive && target != null)
+                ? rpmForDistance(target.range) : targetShooterRPM;
 
         boolean reverseAll = gamepad1.b;
         boolean shootHeld = gamepad1.left_trigger_pressed || gamepad2.left_trigger_pressed;
@@ -241,7 +337,6 @@ public class drive2 extends OpMode {
         double feederPower = 0.0;
         double shooterRPM = 0.0;
 
-        // Priority (highest first): reverseAll (gamepad1.b) > shoot > feed only > outtake > intake
         if (reverseAll) {
             intakePower = -1.0;
             feederPower = -1.0;
@@ -261,8 +356,8 @@ public class drive2 extends OpMode {
             intakePower = 1.0;
         }
 
-        // Pre-spin the shooter while auto-aiming, even before the shoot trigger is pulled
-        if (aiming && !shootHeld) {
+        boolean preSpin = autoAlignActive || now < spinHoldUntil;
+        if (preSpin && !shootHeld && !reverseAll) {
             shooterRPM = activeRPM;
         }
 
@@ -270,25 +365,33 @@ public class drive2 extends OpMode {
         Feeder.setPower(feederPower);
         Shooter.setVelocity(shooterRPM * TICKS_PER_REV / 60.0);
 
-        // ---------- Telemetry ----------
         double shooterAmps = Shooter.getCurrent(CurrentUnit.AMPS);
 
         telemetry.addData("Status", "Run Time: " + runtime.toString());
         telemetry.addData("Drive Orientation", isReversed ? "REVERSED (Back is Front)" : "NORMAL");
         telemetry.addData("Alliance (Y to toggle)", blueAlliance ? "BLUE" : "RED");
 
+        telemetry.addLine("--- Auto-align (tap X) ---");
+        telemetry.addData("Align status", alignStatus);
+        if (target != null) {
+            telemetry.addData("Target cell", target.cell + " (" + target.tagsSeen + " tags)");
+            telemetry.addData("Bearing (deg)", "%5.1f", target.bearing);
+            telemetry.addData("Range (in)", "%5.1f  (goal %.0f)", target.range, SHOOT_RANGE_IN);
+            telemetry.addData("Est. height (in)", "%5.1f", target.height);
+        } else {
+            telemetry.addData("Target", "none visible");
+        }
+
         telemetry.addLine("--- Vision ---");
         telemetry.addData("Camera state", portal.getCameraState());
         telemetry.addData("# detections (all)", allTags.size());
         for (AprilTagDetection d : allTags) {
-            telemetry.addData("Seen tag " + d.id,
-                    d.metadata != null ? "metadata OK" : "NO metadata (ignored)");
+            if (d.metadata != null && d.ftcPose != null) {
+                telemetry.addData("Tag " + d.id, "brg %.1f  rng %.1f", d.ftcPose.bearing, d.ftcPose.range);
+            } else {
+                telemetry.addData("Tag " + d.id, "NO metadata (ignored)");
+            }
         }
-        telemetry.addData("Looking for tag", blueAlliance ? BLUE_TAG : RED_TAG);
-        telemetry.addData("Tag visible", tag != null);
-        telemetry.addData("Auto aim (hold X)", aiming ? "ACTIVE" : (xHeld ? "SEARCHING" : "off"));
-        telemetry.addData("Tag bearing", "%4.1f", tagBearing);
-        telemetry.addData("Tag range", "%4.1f", tagRange);
 
         telemetry.addLine("--- Shooter ---");
         telemetry.addData("Manual target RPM", targetShooterRPM);
@@ -309,17 +412,84 @@ public class drive2 extends OpMode {
         }
     }
 
-    // ======================= Helpers =======================
+    private HiveTarget findHiveTarget(List<AprilTagDetection> detections, int preferCell) {
+        int base = blueAlliance ? BLUE_FIRST_ID : RED_FIRST_ID;
+        double[] bearingSum = new double[CELLS_PER_ALLIANCE];
+        double[] rangeSum = new double[CELLS_PER_ALLIANCE];
+        double[] heightSum = new double[CELLS_PER_ALLIANCE];
+        int[] count = new int[CELLS_PER_ALLIANCE];
+        double tilt = Math.toRadians(CAMERA_TILT_UP_DEG);
+        double yaw = Math.toRadians(CAMERA_YAW_LEFT_DEG);
+
+        for (AprilTagDetection d : detections) {
+            if (d.metadata == null || d.ftcPose == null) continue;
+            int idx = d.id - base;
+            if (idx < 0 || idx >= CELLS_PER_ALLIANCE * TAGS_PER_CELL) continue;
+            int cell = idx / TAGS_PER_CELL;
+
+            double cx = d.ftcPose.x, cy = d.ftcPose.y;
+            double right = cx * Math.cos(yaw) - cy * Math.sin(yaw) - CAMERA_LEFT_OFFSET_IN;
+            double fwd = cx * Math.sin(yaw) + cy * Math.cos(yaw) + CAMERA_FWD_OFFSET_IN;
+
+            bearingSum[cell] += -Math.toDegrees(Math.atan2(right, fwd));
+            rangeSum[cell] += Math.sqrt(right * right + fwd * fwd + d.ftcPose.z * d.ftcPose.z);
+            heightSum[cell] += CAMERA_HEIGHT_IN
+                    + d.ftcPose.y * Math.sin(tilt) + d.ftcPose.z * Math.cos(tilt);
+            count[cell]++;
+        }
+
+        int best = -1;
+        if (preferCell >= 0 && preferCell < CELLS_PER_ALLIANCE && count[preferCell] > 0) {
+            best = preferCell;
+        } else {
+            double bestHeight = -Double.MAX_VALUE;
+            for (int c = 0; c < CELLS_PER_ALLIANCE; c++) {
+                if (count[c] == 0) continue;
+                double h = heightSum[c] / count[c];
+                if (h < MIN_TARGET_HEIGHT_IN) continue;
+                if (h > bestHeight) {
+                    bestHeight = h;
+                    best = c;
+                }
+            }
+        }
+        if (best < 0) return null;
+
+        HiveTarget t = new HiveTarget();
+        t.cell = best;
+        t.tagsSeen = count[best];
+        t.bearing = bearingSum[best] / count[best];
+        t.range = rangeSum[best] / count[best];
+        t.height = heightSum[best] / count[best];
+        return t;
+    }
+
+    private double rpmForDistance(double distIn) {
+        int last = DIST_IN.length - 1;
+        if (distIn <= DIST_IN[0]) return RPM_TBL[0];
+        if (distIn >= DIST_IN[last]) return RPM_TBL[last];
+        for (int i = 0; i < last; i++) {
+            if (distIn <= DIST_IN[i + 1]) {
+                double t = (distIn - DIST_IN[i]) / (DIST_IN[i + 1] - DIST_IN[i]);
+                return RPM_TBL[i] + t * (RPM_TBL[i + 1] - RPM_TBL[i]);
+            }
+        }
+        return RPM_TBL[last];
+    }
 
     private void handleServos() {
         if (gamepad1.dpad_down) intakebar.setPosition(0.75);
         if (gamepad1.dpad_up) intakebar.setPosition(0.25);
 
-        if (gamepad1.dpad_left) rampleft.setPosition(1);
-        if (gamepad1.dpad_right) rampleft.setPosition(0);
-        if (gamepad1.dpad_left) rampright.setPosition(1);
-        if (gamepad1.dpad_right) rampright.setPosition(0);
-}
+        if (gamepad1.dpad_left) {
+            rampleft.setPosition(1);
+            rampright.setPosition(1);
+        }
+        if (gamepad1.dpad_right) {
+            rampleft.setPosition(0);
+            rampright.setPosition(0);
+        }
+    }
 
     private void handleToggles() {
         if (gamepad1.a && !lastGamepad1A) {
@@ -329,6 +499,7 @@ public class drive2 extends OpMode {
 
         if (gamepad1.y && !alliancePrev) {
             blueAlliance = !blueAlliance;
+            lockedCell = -1;
         }
         alliancePrev = gamepad1.y;
     }
@@ -342,9 +513,6 @@ public class drive2 extends OpMode {
 
         if (gamepad2.a && !aPrev) targetShooterRPM += 100;
         aPrev = gamepad2.a;
-
-        //if (gamepad2.x && !xPrev) targetShooterRPM = -targetShooterRPM;
-        //xPrev = gamepad2.x;
 
         if (gamepad2.dpad_up && !upPrev) targetShooterRPM = 2600;
         upPrev = gamepad2.dpad_up;
@@ -360,10 +528,10 @@ public class drive2 extends OpMode {
 
     private void driveMecanum(double drive, double strafe, double twist) {
         double[] speeds = {
-                (drive + strafe + twist),   // Rightfront
-                (drive - strafe - twist),   // Rightback
-                (drive - strafe + twist),   // Leftfront
-                (drive + strafe - twist),   // Leftback
+                (drive + strafe + twist),
+                (drive - strafe - twist),
+                (drive - strafe + twist),
+                (drive + strafe - twist),
         };
 
         double max = 1.0;
@@ -374,27 +542,5 @@ public class drive2 extends OpMode {
         Rightback.setPower(speeds[1]);
         Leftfront.setPower(speeds[2]);
         Leftback.setPower(speeds[3]);
-    }
-
-    private AprilTagDetection findTag(List<AprilTagDetection> detections, int id) {
-        for (AprilTagDetection d : detections) {
-            if (d.metadata != null && d.id == id) {
-                return d;
-            }
-        }
-        return null;
-    }
-
-    private double rpmForDistance(double distIn) {
-        int last = DIST_IN.length - 1;
-        if (distIn <= DIST_IN[0]) return RPM_TBL[0];
-        if (distIn >= DIST_IN[last]) return RPM_TBL[last];
-        for (int i = 0; i < last; i++) {
-            if (distIn <= DIST_IN[i + 1]) {
-                double t = (distIn - DIST_IN[i]) / (DIST_IN[i + 1] - DIST_IN[i]);
-                return RPM_TBL[i] + t * (RPM_TBL[i + 1] - RPM_TBL[i]);
-            }
-        }
-        return RPM_TBL[last];
     }
 }
