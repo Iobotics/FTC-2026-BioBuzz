@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 //import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -23,6 +24,9 @@ public class SecondShooterAuto8898 extends LinearOpMode {
     private DcMotorEx outake2 = null;
     private DcMotorEx feeder = null;
     private ServoImplEx intakeBar;
+
+    private ServoImplEx flowerLeft;
+    private ServoImplEx flowerRight;
 
 
     public double outakeSetRPM = 0.0;
@@ -67,6 +71,9 @@ public class SecondShooterAuto8898 extends LinearOpMode {
 
         intakeBar   = hardwareMap.get(ServoImplEx.class, "intakeBar");
 
+        flowerLeft = hardwareMap.get(ServoImplEx.class, "flower left");
+        flowerRight = hardwareMap.get(ServoImplEx.class, "flower right");
+
 
 
         // --- Motor Directions ---
@@ -78,6 +85,9 @@ public class SecondShooterAuto8898 extends LinearOpMode {
         intake.setDirection(DcMotor.Direction.REVERSE);
 
         feeder.setDirection(DcMotor.Direction.FORWARD);
+
+        flowerLeft.setDirection(Servo.Direction.REVERSE);
+        flowerRight.setDirection(Servo.Direction.FORWARD);
 
         outake.setDirection(DcMotorEx.Direction.REVERSE);
         outake.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
@@ -112,6 +122,11 @@ public class SecondShooterAuto8898 extends LinearOpMode {
 
         waitForStart();
 
+        flowerLeft.setPwmEnable();
+        flowerRight.setPwmEnable();
+        flowerLeft.setPosition(0.0);
+        flowerRight.setPosition(0.0);
+
         // --- Step 1:  Wait 8 seconds
         sleep(8000);
 
@@ -119,7 +134,7 @@ public class SecondShooterAuto8898 extends LinearOpMode {
         encoderDrive(DRIVE_SPEED, 12, 12, 12, 12, 5.0);  //front of the robot is facing the field wall
 
 
-        // --- Step 3: Drop the Intakem
+        // --- Step 3: Drop the Intake
 
         intakeBar.setPwmEnable();
         intakeBar.setPosition(0.45);

@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 //import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -23,6 +24,9 @@ public class ParkOnlyAuto8898 extends LinearOpMode {
     private DcMotorEx outake2 = null;
     private DcMotorEx feeder = null;
     private ServoImplEx intakeBar;
+
+    private ServoImplEx flowerLeft;
+    private ServoImplEx flowerRight;
 
 
 
@@ -68,6 +72,9 @@ public class ParkOnlyAuto8898 extends LinearOpMode {
 
         intakeBar   = hardwareMap.get(ServoImplEx.class, "intakeBar");
 
+        flowerLeft = hardwareMap.get(ServoImplEx.class, "flower left");
+        flowerRight = hardwareMap.get(ServoImplEx.class, "flower right");
+
 
         // --- Motor Directions ---
         leftFront.setDirection(DcMotor.Direction.FORWARD);
@@ -78,6 +85,9 @@ public class ParkOnlyAuto8898 extends LinearOpMode {
         intake.setDirection(DcMotor.Direction.REVERSE);
 
         feeder.setDirection(DcMotor.Direction.FORWARD);
+
+        flowerLeft.setDirection(Servo.Direction.REVERSE);
+        flowerRight.setDirection(Servo.Direction.FORWARD);
 
         outake.setDirection(DcMotorEx.Direction.REVERSE);
         outake.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
@@ -112,14 +122,19 @@ public class ParkOnlyAuto8898 extends LinearOpMode {
 
         waitForStart();
 
-        // --- Step 1: Drive forward slightly
-        encoderDrive(DRIVE_SPEED, 12, 12, 12, 12, 5.0);  //front of the robot is facing the field wall
+        flowerLeft.setPwmEnable();
+        flowerRight.setPwmEnable();
+        flowerLeft.setPosition(0.0);
+        flowerRight.setPosition(0.0);
 
+        // --- Step 1: Drive forward slightly ---
+        encoderDrive(DRIVE_SPEED, 7, 7, 7, 7, 3.0);  //front of the robot is facing the field wall
 
-        // --- Step 2: Strafe Right 62 inches ---
-        encoderDrive(DRIVE_SPEED, 62, -62, -62, 62, 5.0);  //front of the robot is facing the field wall
+        // --- Step 2: Strafe Right 64 inches ---
+        encoderDrive(DRIVE_SPEED, 64, -64, -64, 64, 3.0);  //front of the robot is facing the field wall
 
-
+        // --- Step 3: Drive forward slightly ---
+        encoderDrive(DRIVE_SPEED, 13, 13, 13, 13, 3.0);  //front of the robot is facing the field wall
 
         telemetry.addData("Path", "Complete");
         telemetry.update();
