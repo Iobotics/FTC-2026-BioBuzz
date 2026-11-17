@@ -88,16 +88,10 @@ public class CarterTeleop2 extends LinearOpMode {
             double twist = -gamepad1.right_stick_x;
 
             // Toggle reverse on A press (edge detection).
-            if (gamepad1.a && !aPrev) {
+            if (gamepad1.dpad_left && !aPrev) {
                 isReversed = !isReversed;
             }
-            aPrev = gamepad1.a;
-
-            // Toggle reverse on gamepad 2 A press.
-            if (gamepad2.a && !a2Prev) {
-                isReversed = !isReversed;
-            }
-            a2Prev = gamepad2.a;
+            aPrev = gamepad1.dpad_left;
 
             // Decrease target shooter RPM by 50 on dpad down press.
             if (gamepad2.dpad_down && !dpad_downPrev) {
@@ -146,6 +140,11 @@ public class CarterTeleop2 extends LinearOpMode {
                 setShooterRPM = targetShooterRPM;
             } else {
                 setShooterRPM = 0;
+            }
+
+            if (gamepad1.y) {
+                setShooterRPM = -targetShooterRPM;
+
             }
 
             // Manual feeder overrides (Bumpers)
