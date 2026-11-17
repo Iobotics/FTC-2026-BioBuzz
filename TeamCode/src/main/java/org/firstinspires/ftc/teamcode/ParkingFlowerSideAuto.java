@@ -98,9 +98,6 @@ public class ParkingFlowerSideAuto extends LinearOpMode {
         // --- Step 1: Drive forward slightly
         encoderDrive(DRIVE_SPEED, 20, 20, 20, 20, 5.0);  //front of the robot is facing the field wall
 
-        // --- Step 6: Strafe into parking spot ---
-        encoderDrive(DRIVE_SPEED, 64, -64, -64, 64, 5.0);  //front of the robot is facing the field wall
-
 
 
         telemetry.addData("Path", "Complete");
