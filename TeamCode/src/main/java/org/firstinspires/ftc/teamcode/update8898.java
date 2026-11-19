@@ -19,7 +19,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 import org.firstinspires.ftc.vision.VisionPortal;
 import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
-import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
+import org.firstinspires.ftc.vision.apriltag.AprilTagClusterDetection;
 import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
 
 import android.util.Size;
@@ -105,18 +105,9 @@ public class update8898 extends OpMode {
     boolean exposureSet = false;
 
     final String CAMERA_NAME = "webcam";
-    final double TAG_SIZE_IN = 3.25;
-    final int RED_FIRST_ID = 30;
-    final int BLUE_FIRST_ID = 38;
-    final int CELLS_PER_ALLIANCE = 2;
-    final int TAGS_PER_CELL = 4;
 
     final int EXPOSURE_MS = 6;
     final int GAIN = 250;
-
-    final double CAMERA_HEIGHT_IN = 10.0;
-    final double CAMERA_TILT_UP_DEG = 0.0;
-    final double MIN_TARGET_HEIGHT_IN = -999;
 
     final double BEARING_TOL = 1.5;
     final double AIM_OFFSET_DEG = 0.0;
@@ -137,14 +128,13 @@ public class update8898 extends OpMode {
     double lastTargetTime = 0;
     double alignedSince = -1;
     double searchDir = -1;
-    int lockedCell = -1;
+    String lockedName = null;
     boolean alliancePrev = false;
     boolean alignBtnPrev = false;
 
     private static class HiveTarget {
-        int cell;
-        double bearing, range, height;
-        int tagsSeen;
+        String name;
+        double bearing, range, roll, percent;
     }
 
 
@@ -382,12 +372,12 @@ public class update8898 extends OpMode {
 
         if (gamepad1.dpad_right && !alliancePrev) {
             blueAlliance = !blueAlliance;
-            lockedCell = -1;
+            lockedName = null;
         }
         alliancePrev = gamepad1.dpad_right;
 
         List<AprilTagDetection> allTags = aprilTag.getDetections();
-        HiveTarget target = findHiveTarget(allTags, autoAlignActive ? lockedCell : -1);
+        HiveTarget target = findHiveTarget(allTags, autoAlignActive ? lockedName : null);
 
         boolean alignBtn = gamepad1.b;
         if (alignBtn && !alignBtnPrev) {
@@ -400,7 +390,7 @@ public class update8898 extends OpMode {
                 autoStartTime = now;
                 lastTargetTime = now;
                 alignedSince = -1;
-                lockedCell = -1;
+                lockedName = null;
             }
         }
         alignBtnPrev = alignBtn;
@@ -420,7 +410,7 @@ public class update8898 extends OpMode {
                 autoAlignActive = false;
                 alignStatus = "TIMEOUT";
             } else if (target != null) {
-                lockedCell = target.cell;
+                lockedName = target.name;
                 lastTargetTime = now;
 
                 double bearingErr = target.bearing - AIM_OFFSET_DEG;
@@ -577,9 +567,11 @@ public class update8898 extends OpMode {
         telemetry.addData("Alliance (dpad right)", blueAlliance ? "BLUE" : "RED");
         telemetry.addData("Align status (B)", alignStatus);
         if (target != null) {
-            telemetry.addData("Target cell", target.cell + " (" + target.tagsSeen + " tags)");
+            telemetry.addData("Target cluster", target.name);
+            telemetry.addData("Cluster found", "%5.1f", target.percent);
             telemetry.addData("Bearing (deg)", "%5.1f", target.bearing);
             telemetry.addData("Range (in)", "%5.1f", target.range);
+            telemetry.addData("Roll (deg)", "%5.1f", target.roll);
         } else {
             telemetry.addData("Target", "none visible");
         }
@@ -596,13 +588,7 @@ public class update8898 extends OpMode {
     }
 
     private void initVision() {
-        AprilTagLibrary.Builder lib = new AprilTagLibrary.Builder();
-        for (int id = RED_FIRST_ID; id < BLUE_FIRST_ID + CELLS_PER_ALLIANCE * TAGS_PER_CELL; id++) {
-            lib.addTag(id, "HIVE " + id, TAG_SIZE_IN, DistanceUnit.INCH);
-        }
-
         aprilTag = new AprilTagProcessor.Builder()
-                .setTagLibrary(lib.build())
                 .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
                 .setDrawTagID(true)
                 .setDrawTagOutline(true)
@@ -637,50 +623,30 @@ public class update8898 extends OpMode {
         exposureSet = true;
     }
 
-    private HiveTarget findHiveTarget(List<AprilTagDetection> detections, int preferCell) {
-        int base = blueAlliance ? BLUE_FIRST_ID : RED_FIRST_ID;
-        double[] bearingSum = new double[CELLS_PER_ALLIANCE];
-        double[] rangeSum = new double[CELLS_PER_ALLIANCE];
-        double[] heightSum = new double[CELLS_PER_ALLIANCE];
-        int[] count = new int[CELLS_PER_ALLIANCE];
-        double tilt = Math.toRadians(CAMERA_TILT_UP_DEG);
+    private HiveTarget findHiveTarget(List<AprilTagDetection> detections, String preferName) {
+        String alliancePrefix = blueAlliance ? "B" : "R";
+        HiveTarget best = null;
 
         for (AprilTagDetection d : detections) {
-            if (d.metadata == null || d.ftcPose == null) continue;
-            int idx = d.id - base;
-            if (idx < 0 || idx >= CELLS_PER_ALLIANCE * TAGS_PER_CELL) continue;
-            int cell = idx / TAGS_PER_CELL;
+            if (!(d instanceof AprilTagClusterDetection)) continue;
+            AprilTagClusterDetection c = (AprilTagClusterDetection) d;
+            if (c.metadata == null || c.ftcPose == null) continue;
 
-            bearingSum[cell] += d.ftcPose.bearing;
-            rangeSum[cell] += d.ftcPose.range;
-            heightSum[cell] += CAMERA_HEIGHT_IN
-                    + d.ftcPose.y * Math.sin(tilt) + d.ftcPose.z * Math.cos(tilt);
-            count[cell]++;
+            String name = c.metadata.name;
+            if (name == null || !name.toUpperCase().startsWith(alliancePrefix)) continue;
+            if (Math.abs(c.ftcPose.roll) >= 90) continue;
+
+            HiveTarget t = new HiveTarget();
+            t.name = name;
+            t.bearing = c.ftcPose.bearing;
+            t.range = c.ftcPose.range;
+            t.roll = c.ftcPose.roll;
+            double pct = c.percentClusterFound;
+            t.percent = pct;
+
+            if (preferName != null && preferName.equals(name)) return t;
+            if (best == null || t.percent > best.percent) best = t;
         }
-
-        int best = -1;
-        if (preferCell >= 0 && preferCell < CELLS_PER_ALLIANCE && count[preferCell] > 0) {
-            best = preferCell;
-        } else {
-            double bestHeight = -Double.MAX_VALUE;
-            for (int c = 0; c < CELLS_PER_ALLIANCE; c++) {
-                if (count[c] == 0) continue;
-                double h = heightSum[c] / count[c];
-                if (h < MIN_TARGET_HEIGHT_IN) continue;
-                if (h > bestHeight) {
-                    bestHeight = h;
-                    best = c;
-                }
-            }
-        }
-        if (best < 0) return null;
-
-        HiveTarget t = new HiveTarget();
-        t.cell = best;
-        t.tagsSeen = count[best];
-        t.bearing = bearingSum[best] / count[best];
-        t.range = rangeSum[best] / count[best];
-        t.height = heightSum[best] / count[best];
-        return t;
+        return best;
     }
 }
