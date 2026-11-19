@@ -8,9 +8,24 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.ServoImplEx;
 import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.util.Range;
 
 
+import org.firstinspires.ftc.robotcore.external.hardware.camera.WebcamName;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.ExposureControl;
+import org.firstinspires.ftc.robotcore.external.hardware.camera.controls.GainControl;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit;
+import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
+import org.firstinspires.ftc.vision.VisionPortal;
+import org.firstinspires.ftc.vision.apriltag.AprilTagDetection;
+import org.firstinspires.ftc.vision.apriltag.AprilTagLibrary;
+import org.firstinspires.ftc.vision.apriltag.AprilTagProcessor;
+
+import android.util.Size;
+
+import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 
 
@@ -85,6 +100,53 @@ public class update8898 extends OpMode {
     final double D = 1.5;
     final double F = 8.0;
 
+    private AprilTagProcessor aprilTag;
+    private VisionPortal portal;
+    boolean exposureSet = false;
+
+    final String CAMERA_NAME = "webcam";
+    final double TAG_SIZE_IN = 3.25;
+    final int RED_FIRST_ID = 30;
+    final int BLUE_FIRST_ID = 38;
+    final int CELLS_PER_ALLIANCE = 2;
+    final int TAGS_PER_CELL = 4;
+
+    final int EXPOSURE_MS = 6;
+    final int GAIN = 250;
+
+    final double CAMERA_HEIGHT_IN = 10.0;
+    final double CAMERA_TILT_UP_DEG = 0.0;
+    final double MIN_TARGET_HEIGHT_IN = -999;
+
+    final double BEARING_TOL = 1.5;
+    final double AIM_OFFSET_DEG = 0.0;
+    final double TURN_GAIN = 0.02;
+    final double MAX_TURN = 0.35;
+    final double MIN_TURN = 0.08;
+    final double SEARCH_TURN = 0.20;
+    final double LOST_HOLD_S = 0.30;
+    final double ALIGNED_HOLD_S = 0.25;
+    final double AUTO_TIMEOUT_S = 6.0;
+    final double CANCEL_STICK = 0.25;
+    final double TURN_SIGN = -1.0;
+
+    boolean blueAlliance = true;
+    boolean autoAlignActive = false;
+    String alignStatus = "IDLE";
+    double autoStartTime = 0;
+    double lastTargetTime = 0;
+    double alignedSince = -1;
+    double searchDir = -1;
+    int lockedCell = -1;
+    boolean alliancePrev = false;
+    boolean alignBtnPrev = false;
+
+    private static class HiveTarget {
+        int cell;
+        double bearing, range, height;
+        int tagsSeen;
+    }
+
 
     @Override
     public void init() {
@@ -149,11 +211,27 @@ public class update8898 extends OpMode {
         outake2.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
 
 
+        initVision();
 
 
         runtime.reset();
 
 
+    }
+
+    @Override
+    public void init_loop() {
+        if (gamepad1.dpad_right && !alliancePrev) {
+            blueAlliance = !blueAlliance;
+        }
+        alliancePrev = gamepad1.dpad_right;
+
+        setManualExposure();
+
+        telemetry.addData("Alliance (dpad right to toggle)", blueAlliance ? "BLUE" : "RED");
+        telemetry.addData("Camera state", portal.getCameraState());
+        telemetry.addData("# detections", aprilTag.getDetections().size());
+        telemetry.update();
     }
 
 
@@ -299,6 +377,84 @@ public class update8898 extends OpMode {
         lastA = gamepad1.a;
 
 
+        double now = runtime.seconds();
+        setManualExposure();
+
+        if (gamepad1.dpad_right && !alliancePrev) {
+            blueAlliance = !blueAlliance;
+            lockedCell = -1;
+        }
+        alliancePrev = gamepad1.dpad_right;
+
+        List<AprilTagDetection> allTags = aprilTag.getDetections();
+        HiveTarget target = findHiveTarget(allTags, autoAlignActive ? lockedCell : -1);
+
+        boolean alignBtn = gamepad1.b;
+        if (alignBtn && !alignBtnPrev) {
+            if (autoAlignActive) {
+                autoAlignActive = false;
+                alignStatus = "CANCELLED";
+            } else {
+                autoAlignActive = true;
+                alignStatus = "SEARCHING";
+                autoStartTime = now;
+                lastTargetTime = now;
+                alignedSince = -1;
+                lockedCell = -1;
+            }
+        }
+        alignBtnPrev = alignBtn;
+
+        boolean sticksMoved = Math.abs(gamepad1.left_stick_x) > CANCEL_STICK
+                || Math.abs(gamepad1.left_stick_y) > CANCEL_STICK
+                || Math.abs(gamepad1.right_stick_x) > CANCEL_STICK;
+        if (autoAlignActive && sticksMoved) {
+            autoAlignActive = false;
+            alignStatus = "CANCELLED";
+        }
+
+        double autoTwist = 0;
+
+        if (autoAlignActive) {
+            if (now - autoStartTime > AUTO_TIMEOUT_S) {
+                autoAlignActive = false;
+                alignStatus = "TIMEOUT";
+            } else if (target != null) {
+                lockedCell = target.cell;
+                lastTargetTime = now;
+
+                double bearingErr = target.bearing - AIM_OFFSET_DEG;
+                if (Math.abs(bearingErr) > 0.01) searchDir = Math.signum(bearingErr);
+
+                boolean headingOk = Math.abs(bearingErr) < BEARING_TOL;
+                alignStatus = "ALIGNING";
+
+                if (!headingOk) {
+                    autoTwist = TURN_SIGN * Range.clip(bearingErr * TURN_GAIN, -MAX_TURN, MAX_TURN);
+                    if (Math.abs(autoTwist) < MIN_TURN) autoTwist = Math.copySign(MIN_TURN, autoTwist);
+                }
+
+                if (headingOk) {
+                    if (alignedSince < 0) alignedSince = now;
+                    if (now - alignedSince >= ALIGNED_HOLD_S) {
+                        autoAlignActive = false;
+                        alignStatus = "ALIGNED";
+                        gamepad1.rumble(400);
+                        autoTwist = 0;
+                    }
+                } else {
+                    alignedSince = -1;
+                }
+            } else {
+                alignedSince = -1;
+                alignStatus = "SEARCHING";
+                if (now - lastTargetTime > LOST_HOLD_S) {
+                    autoTwist = TURN_SIGN * searchDir * SEARCH_TURN;
+                }
+            }
+        }
+
+
         // Mecanum drive is controlled with three axes: drive (front-and-back),
         // strafe (left-and-right), and twist (rotating the whole chassis).
         double drive  = -gamepad1.left_stick_y;
@@ -318,6 +474,12 @@ public class update8898 extends OpMode {
             drive = -drive;
             strafe = -strafe;
             //twist = -twist;
+        }
+
+        if (autoAlignActive) {
+            drive = 0;
+            strafe = 0;
+            twist = autoTwist;
         }
 
 
@@ -412,7 +574,113 @@ public class update8898 extends OpMode {
         //telemetry.addData("hi lily remember to yell at tom and bella cuz they needa park and garden","");
         //telemetry.addData("this is a little funsies note from carter, the better programmer on 8741", "");
         telemetry.addData("Flower Arm Down?",flowerDown);
+        telemetry.addData("Alliance (dpad right)", blueAlliance ? "BLUE" : "RED");
+        telemetry.addData("Align status (B)", alignStatus);
+        if (target != null) {
+            telemetry.addData("Target cell", target.cell + " (" + target.tagsSeen + " tags)");
+            telemetry.addData("Bearing (deg)", "%5.1f", target.bearing);
+            telemetry.addData("Range (in)", "%5.1f", target.range);
+        } else {
+            telemetry.addData("Target", "none visible");
+        }
+        telemetry.addData("Camera state", portal.getCameraState());
+        telemetry.addData("# detections (all)", allTags.size());
         telemetry.update();
     }
-}
 
+    @Override
+    public void stop() {
+        if (portal != null) {
+            portal.close();
+        }
+    }
+
+    private void initVision() {
+        AprilTagLibrary.Builder lib = new AprilTagLibrary.Builder();
+        for (int id = RED_FIRST_ID; id < BLUE_FIRST_ID + CELLS_PER_ALLIANCE * TAGS_PER_CELL; id++) {
+            lib.addTag(id, "HIVE " + id, TAG_SIZE_IN, DistanceUnit.INCH);
+        }
+
+        aprilTag = new AprilTagProcessor.Builder()
+                .setTagLibrary(lib.build())
+                .setOutputUnits(DistanceUnit.INCH, AngleUnit.DEGREES)
+                .setDrawTagID(true)
+                .setDrawTagOutline(true)
+                .setDrawAxes(true)
+                .build();
+
+        aprilTag.setDecimation(2);
+
+        portal = new VisionPortal.Builder()
+                .setCamera(hardwareMap.get(WebcamName.class, CAMERA_NAME))
+                .setCameraResolution(new Size(640, 480))
+                .setStreamFormat(VisionPortal.StreamFormat.MJPEG)
+                .addProcessor(aprilTag)
+                .build();
+    }
+
+    private void setManualExposure() {
+        if (portal == null || exposureSet) return;
+        if (portal.getCameraState() != VisionPortal.CameraState.STREAMING) return;
+
+        try {
+            ExposureControl exposure = portal.getCameraControl(ExposureControl.class);
+            if (exposure.getMode() != ExposureControl.Mode.Manual) {
+                exposure.setMode(ExposureControl.Mode.Manual);
+            }
+            exposure.setExposure(EXPOSURE_MS, TimeUnit.MILLISECONDS);
+
+            GainControl gain = portal.getCameraControl(GainControl.class);
+            gain.setGain(Range.clip(GAIN, gain.getMinGain(), gain.getMaxGain()));
+        } catch (Exception e) {
+        }
+        exposureSet = true;
+    }
+
+    private HiveTarget findHiveTarget(List<AprilTagDetection> detections, int preferCell) {
+        int base = blueAlliance ? BLUE_FIRST_ID : RED_FIRST_ID;
+        double[] bearingSum = new double[CELLS_PER_ALLIANCE];
+        double[] rangeSum = new double[CELLS_PER_ALLIANCE];
+        double[] heightSum = new double[CELLS_PER_ALLIANCE];
+        int[] count = new int[CELLS_PER_ALLIANCE];
+        double tilt = Math.toRadians(CAMERA_TILT_UP_DEG);
+
+        for (AprilTagDetection d : detections) {
+            if (d.metadata == null || d.ftcPose == null) continue;
+            int idx = d.id - base;
+            if (idx < 0 || idx >= CELLS_PER_ALLIANCE * TAGS_PER_CELL) continue;
+            int cell = idx / TAGS_PER_CELL;
+
+            bearingSum[cell] += d.ftcPose.bearing;
+            rangeSum[cell] += d.ftcPose.range;
+            heightSum[cell] += CAMERA_HEIGHT_IN
+                    + d.ftcPose.y * Math.sin(tilt) + d.ftcPose.z * Math.cos(tilt);
+            count[cell]++;
+        }
+
+        int best = -1;
+        if (preferCell >= 0 && preferCell < CELLS_PER_ALLIANCE && count[preferCell] > 0) {
+            best = preferCell;
+        } else {
+            double bestHeight = -Double.MAX_VALUE;
+            for (int c = 0; c < CELLS_PER_ALLIANCE; c++) {
+                if (count[c] == 0) continue;
+                double h = heightSum[c] / count[c];
+                if (h < MIN_TARGET_HEIGHT_IN) continue;
+                if (h > bestHeight) {
+                    bestHeight = h;
+                    best = c;
+                }
+            }
+        }
+        if (best < 0) return null;
+
+        HiveTarget t = new HiveTarget();
+        t.cell = best;
+        t.tagsSeen = count[best];
+        t.bearing = bearingSum[best] / count[best];
+        t.range = rangeSum[best] / count[best];
+        t.height = heightSum[best] / count[best];
+        return t;
+    }
+}
